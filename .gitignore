@@ -1,0 +1,13 @@
+*.FCBak
+# mujoco
+
+# Project Artifacts
+checkpoints/
+rewards_plot.png
+train.log
+*.zip
+scene.xml
+
+# Python
+__pycache__/
+*.pyc

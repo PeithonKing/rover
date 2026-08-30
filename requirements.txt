@@ -1,0 +1,14 @@
+torch
+torchvision
+torchaudio
+numpy
+notebook
+gymnasium
+mujoco
+matplotlib
+tqdm
+stable-baselines3
+
+
+
+# pip install torch torchvision torchaudio numpy notebook gymnasium mujoco matplotlib tqdm stable-baselines3
