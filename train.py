@@ -132,9 +132,8 @@ def main():
 
     os.makedirs(CHECKPOINT_DIR, exist_ok=True)
 
-    # DummyVecEnv: same process, no subprocess FD issues under nohup
-    # Switch back to SubprocVecEnv when scaling beyond 4 envs
-    vec_env = DummyVecEnv([make_env(i, SEED) for i in range(N_ENVS)])
+    # Initialize vectorized environment across multiple CPU cores
+    vec_env = SubprocVecEnv([make_env(i, SEED) for i in range(N_ENVS)])
 
     # Checkpoint callback
     ckpt_callback = CheckpointCallback(

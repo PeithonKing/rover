@@ -75,114 +75,114 @@
     <!--Lighting and floor-->
     <light diffuse=".8 .8 .8" pos="0 0 4" dir="0 0 -1" />
     <light diffuse=".6 .6 .6" pos="4 4 4" dir="-1 -1 -1" />
-    <geom name="floor" pos="0 0 -0.20955231329707802" size="0 0 1" type="plane" material="groundplane" />
+    <geom name="floor" pos="0 0 -0.2009999999999998" size="0 0 1" type="plane" material="groundplane" />
     <!--Assembly-->
     <body name="body" pos="0 0 0" quat="1.0 0.0 0.0 0.0">
       <geom type="mesh" name="body geom" mesh="body" material="body" contype="0" conaffinity="0" />
-      <site name="body site" pos="0.0 0.0 0.0" quat="0.0 0.0 0.0 1.0" rgba="0 0 0 0" />
+      <site name="body site" pos="-0.0 0.0 -0.0" quat="0.0 0.0 0.0 1.0" rgba="0 0 0 0" />
       <body name="rocker_right_leg" pos="0 0 0" quat="1.0 0.0 0.0 0.0">
         <geom type="mesh" name="rocker_right_leg geom" mesh="rocker_right_leg" material="rocker_right_leg" contype="0" conaffinity="0" />
-        <site name="rocker_right_leg site" pos="0.0001237795132220389 -3.837227e-12 7.65995781684e-08" quat="-1.9186002936361354e-11 -0.0006188976845802981 -1.1874047196545743e-14 0.9999998084828097" rgba="0 0 0 0" />
+        <site name="rocker_right_leg site" pos="7.726197315371666e-17 -1.8282806515611008e-16 -2.2132292553525e-16" quat="-7.155745187450983e-16 -3.863098657685826e-16 0.0 1.0" rgba="0 0 0 0" />
         <joint type="hinge" name="pass_left_rocker" pos="0.0 -0.18999999999999997 0.10000000000000002" axis="0.0 -1.0 2.220446049250313e-16" />
         <body name="conn1_right" pos="0 0 0" quat="1.0 0.0 0.0 0.0">
           <geom type="mesh" name="conn1_right geom" mesh="conn1_right" material="conn1_right" contype="0" conaffinity="0" />
-          <site name="conn1_right site" pos="0.0001238316814595362 -3.8449003000000005e-12 7.666415179189999e-08" quat="7.186539617635929e-11 -0.0006188976844949979 -1.47118645439019e-07 0.9999998084827989" rgba="0 0 0 0" />
-          <joint type="hinge" name="pass_right_conn1" pos="-1.571999817422176e-05 -0.17729999999951265 0.1126999902704403" axis="-0.0012377951321015052 3.83720132214646e-11 0.9999992339313121" />
+          <site name="conn1_right site" pos="-9.226482981561053e-17 -1.4302806544378742e-16 -2.3903376955837814e-16" quat="-7.155745190051726e-16 -3.8630986576858223e-16 4.780789697963833e-16 1.0" rgba="0 0 0 0" />
+          <joint type="hinge" name="pass_right_conn1" pos="-9.812270590521906e-18 -0.17729999999999996 0.11269999999999997" axis="-7.726197315371652e-16 1.4311490374901966e-15 1.0" />
         </body>
         <body name="bogie_right_leg" pos="0 0 0" quat="1.0 0.0 0.0 0.0">
           <geom type="mesh" name="bogie_right_leg geom" mesh="bogie_right_leg" material="bogie_right_leg" contype="0" conaffinity="0" />
-          <site name="bogie_right_leg site" pos="-0.0002111058210194453 -3.9403015e-12 -0.0026856444923292126" quat="-1.9185186976040136e-11 -0.010484171637758659 1.774047651169354e-13 0.9999450395622101" rgba="0 0 0 0" />
-          <joint type="hinge" name="pass_right_rockerbogie" pos="0.1360692159937407 -0.16460000000454644 -0.018314839290589913" axis="4.758335652582657e-14 1.0 -3.8372249822060667e-11" />
+          <site name="bogie_right_leg site" pos="8.637042776708681e-17 -1.893198882999263e-16 -2.1092621801186793e-16" quat="-9.376191236701296e-16 0.0 0.0 1.0" rgba="0 0 0 0" />
+          <joint type="hinge" name="pass_right_rockerbogie" pos="0.13592266222324292 -0.1646000000000002 -0.018483174465507405" axis="8.659560562355051e-17 1.0 -2.2759572004815705e-15" />
           <body name="wheel_rotator_right_front" pos="0 0 0" quat="1.0 0.0 0.0 0.0">
             <geom type="mesh" name="wheel_rotator_right_front geom" mesh="wheel_rotator_right_front" material="wheel_rotator_right_front" contype="0" conaffinity="0" />
-            <site name="wheel_rotator_right_front site" pos="0.6224624739998569 0.0015059524449158332 0.01037294203423041" quat="-2.752236206538238e-05 -0.010484135512740604 0.0026249885248927334 0.9999415940845316" rgba="0 0 0 0" />
-            <joint type="hinge" name="srv_right_front_rotator" pos="0.3385232583372211 -0.17730000000800958 -0.10830655567404905" axis="0.02096719084618538 -3.8364653705128596e-11 -0.9997801642901402" />
+            <site name="wheel_rotator_right_front site" pos="0.6237453244466125 5.942060182143583e-17 -8.224522844369804e-18" quat="-9.376191236701296e-16 0.0 0.0 1.0" rgba="0 0 0 0" />
+            <joint type="hinge" name="srv_right_front_rotator" pos="0.3364453244466123 -0.17730000000000032 -0.11269999999999977" axis="0.0 -1.9977029272549944e-15 -1.0" />
             <body name="wheel_right_front" pos="0 0 0" quat="1.0 0.0 0.0 0.0">
               <geom type="mesh" name="wheel_right_front geom" mesh="wheel_right_front" material="wheel_right_front" contype="0" conaffinity="0" />
-              <site name="wheel_right_front site" pos="0.6226249978910869 0.0015067573187614515 0.009934724245662264" quat="-2.9538886137763544e-05 -0.009715971188426967 0.0026249666074902424 0.9999493530082558" rgba="0 0 0 0" />
-              <joint type="hinge" name="drv_right_front_wheel" pos="0.3387435659645839 -0.26999872235637973 -0.09559914289531635" axis="0.0052490933237229805 -0.9999862173555277 0.00011008298002206394" />
+              <site name="wheel_right_front site" pos="0.6237453244466122 -1.578385867140966e-17 4.429780223822254e-16" quat="-8.265968212076141e-16 -7.707523721847567e-16 0.0 1.0" rgba="0 0 0 0" />
+              <joint type="hinge" name="drv_right_front_wheel" pos="0.33644532444661235 -0.2700000000000002 -0.09999999999999949" axis="-1.9721522630525295e-30 -1.0 2.0539125955565396e-15" />
             </body>
           </body>
           <body name="wheel_right_middle" pos="0 0 0" quat="1.0 0.0 0.0 0.0">
             <geom type="mesh" name="wheel_right_middle geom" mesh="wheel_right_middle" material="wheel_right_middle" contype="0" conaffinity="0" />
-            <site name="wheel_right_middle site" pos="0.3433576537131486 -3.8875607000000005e-12 -0.0008878514756954949" quat="-1.9186007306662574e-11 -0.0011056678964399163 -2.5368444215910094e-15 0.9999993887490646" rgba="0 0 0 0" />
-            <joint type="hinge" name="drv_right_middle_wheel" pos="0.05627948960661587 -0.27000000000773555 -0.10152292334999195" axis="-4.75014992618039e-14 -1.0 3.837257727864532e-11" />
+            <site name="wheel_right_middle site" pos="0.3417058366887592 -1.30819888248244e-16 -8.842031402607514e-15" quat="-9.376191236701296e-16 0.0 0.0 1.0" rgba="0 0 0 0" />
+            <joint type="hinge" name="drv_right_middle_wheel" pos="0.05440583668875911 -0.2700000000000003 -0.10000000000000825" axis="0.0 -1.0 2.3869795029440866e-15" />
           </body>
         </body>
         <body name="wheel_rotator_right_back" pos="0 0 0" quat="1.0 0.0 0.0 0.0">
           <geom type="mesh" name="wheel_rotator_right_back geom" mesh="wheel_rotator_right_back" material="wheel_rotator_right_back" contype="0" conaffinity="0" />
-          <site name="wheel_rotator_right_back site" pos="0.0007495804185129156 -0.0010180868732510295 8.512135248883e-07" quat="1.0953604332923685e-06 -0.0006188967152770529 -0.0017698877161030073 0.9999982422300193" rgba="0 0 0 0" />
-          <joint type="hinge" name="srv_right_back_rotator" pos="-0.2870365008838646 -0.17730000000816185 -0.11305545559913018" axis="0.0012377951321015052 -3.837213568614451e-11 -0.9999992339313121" />
+          <site name="wheel_rotator_right_back site" pos="6.491004093495458e-17 -1.6010790976654713e-16 -2.240337285453354e-16" quat="-7.155745187450983e-16 -3.8630986576858253e-16 0.0 1.0" rgba="0 0 0 0" />
+          <joint type="hinge" name="srv_right_back_rotator" pos="-0.28729999999999994 -0.1773000000000005 -0.11270000000000027" axis="7.726197315371652e-16 -1.553613717404932e-15 -1.0" />
           <body name="wheel_right_back" pos="0 0 0" quat="1.0 0.0 0.0 0.0">
             <geom type="mesh" name="wheel_right_back geom" mesh="wheel_right_back" material="wheel_right_back" contype="0" conaffinity="0" />
-            <site name="wheel_right_back site" pos="-0.0023094128078268482 -0.0010072953039861083 0.008359738384381473" quat="-2.479814012656884e-05 -0.015248762976857294 -0.0017697143214889402 0.9998821644193621" rgba="0 0 0 0" />
-            <joint type="hinge" name="drv_right_back_wheel" pos="-0.2873803573621308 -0.2699994192414835 -0.10035587149070069" axis="-0.00353976785427074 -0.9999937349925452 -4.381472403027379e-06" />
+            <site name="wheel_right_back site" pos="1.4116684246030877e-16 -6.476895136190875e-17 -3.3842836082051287e-16" quat="-6.045522162825826e-16 0.0 0.0 1.0" rgba="0 0 0 0" />
+            <joint type="hinge" name="drv_right_back_wheel" pos="-0.2872999999999999 -0.27000000000000024 -0.09999999999999992" axis="0.0 -1.0 1.7763568394002505e-15" />
           </body>
         </body>
       </body>
       <body name="rocker_left_leg" pos="0 0 0" quat="1.0 0.0 0.0 0.0">
         <geom type="mesh" name="rocker_left_leg geom" mesh="rocker_left_leg" material="rocker_left_leg" contype="0" conaffinity="0" />
-        <site name="rocker_left_leg site" pos="-0.0001237899473540945 -3.8240028e-12 7.6627050442e-08" quat="-1.912052799812781e-11 0.0006189498553351057 1.1834506918201993e-14 0.99999980845052" rgba="0 0 0 0" />
+        <site name="rocker_left_leg site" pos="1.9167241245858794e-17 7.000026476456348e-17 -7.356960720283828e-19" quat="0.0 0.0 0.0 1.0" rgba="0 0 0 0" />
         <joint type="hinge" name="pass_right_rocker" pos="0.0 0.19000000000000003 0.09999999999999992" axis="0.0 -1.0 2.220446049250313e-16" />
         <body name="conn1_left" pos="0 0 0" quat="1.0 0.0 0.0 0.0">
           <geom type="mesh" name="conn1_left geom" mesh="conn1_left" material="conn1_left" contype="0" conaffinity="0" />
-          <site name="conn1_left site" pos="-0.0001237377630370335 -3.8163266e-12 7.656245144580001e-08" quat="7.196661315970889e-11 0.0006189498554184494 1.471639911083452e-07 0.9999998084505091" rgba="0 0 0 0" />
-          <joint type="hinge" name="pass_left_conn1" pos="1.572132330673047e-05 0.1773000000004857 0.11269999026977287" axis="-0.0012378994735511657 -3.824118578581384e-11 -0.9999992338021532" />
+          <site name="conn1_left site" pos="-7.377352525219327e-18 4.500267813573931e-18 -1.503569606906507e-17" quat="0.0 0.0 0.0 1.0" rgba="0 0 0 0" />
+          <joint type="hinge" name="pass_left_conn1" pos="1.9167241245858794e-17 0.1773 0.11269999999999993" axis="0.0 -1.2246467991473532e-16 -1.0" />
         </body>
         <body name="bogie_left_leg" pos="0 0 0" quat="1.0 0.0 0.0 0.0">
           <geom type="mesh" name="bogie_left_leg geom" mesh="bogie_left_leg" material="bogie_left_leg" contype="0" conaffinity="0" />
-          <site name="bogie_left_leg site" pos="-0.0004464839280488754 -3.9205708999999994e-12 -0.002524864679602028" quat="-1.9119484765524457e-11 -0.00865938460078162 1.8923699543454803e-13 0.9999625068262988" rgba="0 0 0 0" />
-          <joint type="hinge" name="pass_left_rockerbogie" pos="0.13577588782028763 0.16459999999546918 -0.018651342275005898" axis="-4.7246928591704305e-14 1.0 -3.824063288249135e-11" />
+          <site name="bogie_left_leg site" pos="-1.7601049802723487e-17 9.310434355070712e-17 -4.545467724370338e-17" quat="0.0 -3.790201999626894e-16 0.0 1.0" rgba="0 0 0 0" />
+          <joint type="hinge" name="pass_left_rockerbogie" pos="0.1359226622232428 0.16460000000000002 -0.018483174465507467" axis="8.659560562354901e-17 1.0 4.440892098500626e-16" />
           <body name="wheel_rotator_left_front" pos="0 0 0" quat="1.0 0.0 0.0 0.0">
             <geom type="mesh" name="wheel_rotator_left_front geom" mesh="wheel_rotator_left_front" material="wheel_rotator_left_front" contype="0" conaffinity="0" />
-            <site name="wheel_rotator_left_front site" pos="0.043362491956350044 0.008942067925239057 -0.0017660617867916546" quat="-0.008658355389389848 -0.00013350511381611595 0.9998436562204545 0.015416814653141145" rgba="0 0 0 0" />
-            <joint type="hinge" name="srv_left_front_rotator" pos="0.33790013596139434 0.1772999999920091 -0.1093813626234237" axis="0.01731811986595715 -3.82343090564799e-11 -0.9998500301166713" />
+            <site name="wheel_rotator_left_front site" pos="0.04914532444661175 1.52910236319365e-17 9.561646911610838e-17" quat="-3.7902019996268945e-16 2.8292768660732965e-16 1.0 2.9086327691241854e-16" rgba="0 0 0 0" />
+            <joint type="hinge" name="srv_left_front_rotator" pos="0.3364453244466122 0.17729999999999996 -0.11269999999999987" axis="7.580403999253788e-16 -4.4339069329992415e-16 -1.0" />
             <body name="wheel_left_front" pos="0 0 0" quat="1.0 0.0 0.0 0.0">
               <geom type="mesh" name="wheel_left_front geom" mesh="wheel_left_front" material="wheel_left_front" contype="0" conaffinity="0" />
-              <site name="wheel_left_front site" pos="0.060695252255085784 0.4767359659737294 -0.1999558352570766" quat="0.015416401974460309 0.9998632535469885 0.00017477936542698602 0.005981488841928665" rgba="0 0 0 0" />
-              <joint type="hinge" name="drv_left_front_wheel" pos="0.34053781209159406 0.26995593115452743 -0.09663377128078945" axis="-0.030826496790696004 -0.9995246080046707 -0.0005339370027231949" />
+              <site name="wheel_left_front site" pos="0.04914532444661195 0.4679999999999998 -0.19999999999999976" quat="2.908632769124185e-16 1.0 -5.604834427636185e-16 -3.4825327770850875e-16" rgba="0 0 0 0" />
+              <joint type="hinge" name="drv_left_front_wheel" pos="0.33644532444661207 0.2699999999999998 -0.09999999999999977" axis="-5.817265538248371e-16 -1.0 4.440892098500626e-16" />
             </body>
           </body>
           <body name="wheel_left_middle" pos="0 0 0" quat="1.0 0.0 0.0 0.0">
             <geom type="mesh" name="wheel_left_middle geom" mesh="wheel_left_middle" material="wheel_left_middle" contype="0" conaffinity="0" />
-            <site name="wheel_left_middle site" pos="0.33929876085282157 0.4679999999965149 0.008447762199375354" quat="-1.9116717557148923e-11 -0.017540035037600644 3.590427632161971e-13 0.9998461617523366" rgba="0 0 0 0" />
-            <joint type="hinge" name="drv_left_middle_wheel" pos="0.05568300551031274 0.26999999999229457 -0.10156766090041949" axis="4.7344073106359007e-14 -1.0 3.824051592418199e-11" />
+            <site name="wheel_left_middle site" pos="0.3417058366887589 0.4679999999999999 -8.640111535189077e-15" quat="0.0 0.0 0.0 1.0" rgba="0 0 0 0" />
+            <joint type="hinge" name="drv_left_middle_wheel" pos="0.05440583668875899 0.26999999999999996 -0.10000000000000858" axis="0.0 -1.0 2.220446049250313e-16" />
           </body>
         </body>
         <body name="wheel_rotator_left_back" pos="0 0 0" quat="1.0 0.0 0.0 0.0">
           <geom type="mesh" name="wheel_rotator_left_back geom" mesh="wheel_rotator_left_back" material="wheel_rotator_left_back" contype="0" conaffinity="0" />
-          <site name="wheel_rotator_left_back site" pos="-0.5704010195869037 -0.0068201244173956704 0.0007060230506003711" quat="0.0006189055977087039 -7.401661539816343e-06 0.9999283036491621 -0.01195844732335925" rgba="0 0 0 0" />
-          <joint type="hinge" name="srv_left_back_rotator" pos="-0.28756308108939954 0.1772999999918665 -0.11234418851045833" axis="-0.0012378994736309318 -3.824115338423744e-11 -0.9999992338021532" />
+          <site name="wheel_rotator_left_back site" pos="-0.5746000000000004 1.3341425573199623e-17 1.8606340159442142e-17" quat="0.0 0.0 1.0 2.369757418392935e-16" rgba="0 0 0 0" />
+          <joint type="hinge" name="srv_left_back_rotator" pos="-0.2873 0.17730000000000018 -0.11270000000000013" axis="5.804231674381205e-32 1.2246467991473532e-16 -1.0" />
           <body name="wheel_left_back" pos="0 0 0" quat="1.0 0.0 0.0 0.0">
             <geom type="mesh" name="wheel_left_back geom" mesh="wheel_left_back" material="wheel_left_back" contype="0" conaffinity="0" />
-            <site name="wheel_left_back site" pos="-0.5784578397886202 0.4611272275235159 -0.208552313297078" quat="-0.011956753397834469 0.999806744436825 0.00020140842465508552 0.015603501577111106" rgba="0 0 0 0" />
-            <joint type="hinge" name="drv_left_back_wheel" pos="-0.28976429609282855 0.26997348695486845 -0.09964145389830002" axis="0.02391517073078915 -0.9997139909656598 -2.9604561712415205e-05" />
+            <site name="wheel_left_back site" pos="-0.5746 0.4680000000000003 -0.19999999999999976" quat="2.3697574183929353e-16 1.0 0.0 -4.782261221546544e-16" rgba="0 0 0 0" />
+            <joint type="hinge" name="drv_left_back_wheel" pos="-0.2873 0.27000000000000013 -0.10000000000000006" axis="-4.739514836785873e-16 -1.0 -2.220446049250313e-16" />
           </body>
         </body>
       </body>
       <body name="diff_beam" pos="0 0 0" quat="1.0 0.0 0.0 0.0">
         <geom type="mesh" name="diff_beam geom" mesh="diff_beam" material="diff_beam" contype="0" conaffinity="0" />
-        <site name="diff_beam site" pos="-1.503248605977e-07 -0.00014674418425850112 -8.63432183949e-08" quat="7.191623825631293e-11 2.3148320627258633e-07 -0.00039341624875730333 0.9999999226117978" rgba="0 0 0 0" />
+        <site name="diff_beam site" pos="9.137825860051809e-17 -1.0376656977338119e-16 -1.3876986865598834e-18" quat="0.0 0.0 0.0 1.0" rgba="0 0 0 0" />
         <joint type="hinge" name="pass_diff" pos="-0.18650000000000003 -6.318299999999999e-14 0.2" axis="0.0 0.0 1.0" />
         <body name="conn2_right" pos="0 0 0" quat="1.0 0.0 0.0 0.0">
           <geom type="mesh" name="conn2_right geom" mesh="conn2_right" material="conn2_right" contype="0" conaffinity="0" />
-          <site name="conn2_right site" pos="-0.0001395458160808315 7.365064589999999e-11 -8.62786354362e-08" quat="1.629993039360017e-10 2.315520250197424e-07 -1.4716233969253852e-07 0.9999999999999624" rgba="0 0 0 0" />
-          <joint type="hinge" name="pass_right_diff_conn2" pos="-0.18663950537900842 -0.17729994510000238 0.2000000000324611" axis="-4.6310404999149233e-07 3.2606796915046565e-10 -0.9999999999998928" />
+          <site name="conn2_right site" pos="-1.8633723069938156e-16 -7.67280654437869e-17 -2.962337695583786e-16" quat="-7.155745190051728e-16 0.0 4.780789697963833e-16 1.0" rgba="0 0 0 0" />
+          <joint type="hinge" name="pass_right_diff_conn2" pos="-0.18649999999999997 -0.17729999999999996 0.20000000000000007" axis="-4.725604379196148e-31 -2.2134608837489314e-16 -1.0" />
         </body>
         <body name="conn2_left" pos="0 0 0" quat="1.0 0.0 0.0 0.0">
           <geom type="mesh" name="conn2_left geom" mesh="conn2_left" material="conn2_left" contype="0" conaffinity="0" />
-          <site name="conn2_left site" pos="0.000139464982067969 7.3651501e-11 -8.64078078441e-08" quat="1.6305358968762236e-10 2.3153149070841038e-07 1.4719464428832577e-07 0.9999999999999624" rgba="0 0 0 0" />
-          <joint type="hinge" name="pass_left_diff_conn2" pos="-0.1863604946005285 0.17729994510483368 0.20000000001124774" axis="4.6306298146480465e-07 -3.2603901898439976e-10 0.9999999999998929" />
+          <site name="conn2_left site" pos="2.2217740999645282e-17 -1.0729973917181688e-16 -5.885740549946897e-17" quat="0.0 0.0 0.0 1.0" rgba="0 0 0 0" />
+          <joint type="hinge" name="pass_left_diff_conn2" pos="-0.18649999999999997 0.17729999999999987 0.2" axis="0.0 0.0 1.0" />
         </body>
       </body>
     </body>
   </worldbody>
   <contact />
   <equality>
-    <connect body1="conn1_right" body2="conn2_right" name="connect_hinge_pass_right_conns_1" anchor="-0.00013949577453631928 -0.16459999999567596 0.21269991366770966" />
-    <connect body1="conn1_right" body2="conn2_right" name="connect_hinge_pass_right_conns_2" anchor="-0.0001394928321648627 -0.1545999999956764 0.212699913670968" />
-    <connect body1="conn1_left" body2="conn2_left" name="connect_hinge_pass_left_conns_1" anchor="0.00013951500866085114 0.1646000000043103 0.21269991364584667" />
-    <connect body1="conn1_left" body2="conn2_left" name="connect_hinge_pass_left_conns_2" anchor="0.0001395120653824845 0.17460000000430986 0.21269991364910776" />
+    <connect body1="conn1_right" body2="conn2_right" name="connect_hinge_pass_right_conns_1" anchor="-7.69174498565964e-17 -0.16459999999999975 0.21270000000000003" />
+    <connect body1="conn1_right" body2="conn2_right" name="connect_hinge_pass_right_conns_2" anchor="-8.561307319628856e-17 -0.15459999999999974 0.2127" />
+    <connect body1="conn1_left" body2="conn2_left" name="connect_hinge_pass_left_conns_1" anchor="1.5022647474780674e-17 0.16459999999999989 0.21270000000000003" />
+    <connect body1="conn1_left" body2="conn2_left" name="connect_hinge_pass_left_conns_2" anchor="1.5888603531016166e-17 0.1745999999999999 0.21270000000000003" />
   </equality>
   <tendon />
   <actuator>
