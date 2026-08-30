@@ -30,8 +30,8 @@ from models import RoverFeaturesExtractor, BlindRoverFeaturesExtractor
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
-N_ENVS         = 1                      # 1 env to start — scale up after verifying EGL isolation
-TOTAL_STEPS    = 5_000_000              # total env steps to train
+N_ENVS         = 8                      # Scaled up for server CPU parallelism
+TOTAL_STEPS    = 10_000_000             # 10M total env steps to train
 CHECKPOINT_DIR = "checkpoints"
 CHECKPOINT_FREQ = 10_000               # save every N steps
 EVAL_FREQ      = 10_000
@@ -102,6 +102,13 @@ class RewardPlotCallback(BaseCallback):
         plt.title(f"Rover RL — {self.num_timesteps:,} steps")
         plt.legend()
         plt.grid(True)
+        
+        # Dynamically scale Y-axis to the min/max of the smoothed curve (ignores extreme noise spikes)
+        if len(smoothed) > 0:
+            y_min, y_max = np.min(smoothed), np.max(smoothed)
+            padding = max(0.1 * (y_max - y_min), 1.0) # Ensure at least some padding
+            plt.ylim(y_min - padding, y_max + padding)
+
         plt.tight_layout()
         plt.savefig(self.save_path)
         plt.close()

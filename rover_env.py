@@ -25,6 +25,7 @@ import gymnasium as gym
 from gymnasium import spaces
 import numpy as np
 import mujoco
+import mujoco.viewer
 import os
 
 # ---------------------------------------------------------------------------
@@ -85,7 +86,10 @@ class RoverEnv(gym.Env):
         self._sens_ids = {n: mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_SENSOR, n) for n in PASSIVE_SENSORS}
 
         # Offscreen renderer for camera images
-        self._renderer = mujoco.Renderer(self.model, height=IMG_H, width=IMG_W)
+        if not self.blind:
+            self._renderer = mujoco.Renderer(self.model, height=IMG_H, width=IMG_W)
+        else:
+            self._renderer = None
 
         # Target position (world XY)
         self._target = np.zeros(2)
@@ -102,6 +106,17 @@ class RoverEnv(gym.Env):
         # Viewer for human render mode
         self._viewer = None
 
+        # Contact evaluation setup
+        self._floor_geom_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_GEOM, "floor")
+        wheel_names = [
+            "wheel_right_front geom", "wheel_right_middle geom", "wheel_right_back geom",
+            "wheel_left_front geom", "wheel_left_middle geom", "wheel_left_back geom"
+        ]
+        self._wheel_geom_ids = [mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_GEOM, w) for w in wheel_names]
+        
+        self._has_landed = False
+        self._air_time_steps = 0
+
     # -----------------------------------------------------------------------
     # Reset
     # -----------------------------------------------------------------------
@@ -113,16 +128,9 @@ class RoverEnv(gym.Env):
         # freejoint qpos layout: [x, y, z, qw, qx, qy, qz]
         root_jnt_id  = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, "root")
         qpos_adr     = self.model.jnt_qposadr[root_jnt_id]
-        self.data.qpos[qpos_adr:qpos_adr + 3] = [0.0, 0.0, 0.28]  # x, y, z
+        self.data.qpos[qpos_adr:qpos_adr + 3] = [0.0, 0.0, 0.1]  # x, y, z
         self.data.qpos[qpos_adr + 3]          = 1.0               # qw  (upright)
         self.data.qpos[qpos_adr + 4:qpos_adr + 7] = 0.0           # qx, qy, qz
-
-        # Settling phase: let the rover drop and come to rest before the episode starts.
-        # 300 steps × 0.002s = 0.6s of simulated time — enough to land on all 6 wheels.
-        self.data.ctrl[:] = 0.0
-        for _ in range(300):
-            mujoco.mj_step(self.model, self.data)
-        mujoco.mj_forward(self.model, self.data)
 
         # Spawn rover at origin. The scene.xml already puts body at world origin.
         # Spawn target 5–5.1m away in a ±90° arc in front (along +X)
@@ -132,6 +140,8 @@ class RoverEnv(gym.Env):
         self._prev_dist = dist
 
         self._steps = 0
+        self._has_landed = False
+        self._air_time_steps = 0
         obs  = self._get_obs()
         info = {"target": self._target.copy()}
         return obs, info
@@ -229,6 +239,33 @@ class RoverEnv(gym.Env):
         if tilt > 0.3:   # only penalise meaningful tilts
             reward += tilt * R_TILT_PENALTY
 
+        # Check wheel contacts
+        touching_wheels = set()
+        for i in range(self.data.ncon):
+            contact = self.data.contact[i]
+            if contact.geom1 == self._floor_geom_id and contact.geom2 in self._wheel_geom_ids:
+                touching_wheels.add(contact.geom2)
+            elif contact.geom2 == self._floor_geom_id and contact.geom1 in self._wheel_geom_ids:
+                touching_wheels.add(contact.geom1)
+        
+        n_touching = len(touching_wheels)
+        
+        if not self._has_landed and n_touching >= 1:
+            self._has_landed = True
+            
+        if self._has_landed:
+            if n_touching < 2:
+                reward += R_FLIP_PENALTY * 0.1  # Continuous penalty for wheel lifts
+                self._air_time_steps += 1
+            else:
+                self._air_time_steps = 0
+                
+            if self._air_time_steps >= 20:
+                reward += R_FLIP_PENALTY
+                terminated = True
+                info["airborne"] = True
+                return reward, terminated, info
+
         if dist < SUCCESS_RADIUS:
             reward += R_SUCCESS
             terminated = True
@@ -237,6 +274,10 @@ class RoverEnv(gym.Env):
             reward += R_FLIP_PENALTY
             terminated = True
             info["flipped"] = True
+        elif self.data.body("body").xpos[2] > 1.0:
+            reward += R_FLIP_PENALTY
+            terminated = True
+            info["sky_high"] = True
 
         return reward, terminated, info
 
@@ -249,7 +290,7 @@ class RoverEnv(gym.Env):
         self._viewer.sync()
 
     def render(self):
-        if self.render_mode == "rgb_array":
+        if self.render_mode == "rgb_array" and self._renderer is not None:
             self._renderer.update_scene(self.data)
             return self._renderer.render()
 
@@ -260,4 +301,5 @@ class RoverEnv(gym.Env):
         if self._viewer is not None:
             self._viewer.close()
             self._viewer = None
-        self._renderer.close()
+        if self._renderer is not None:
+            self._renderer.close()
