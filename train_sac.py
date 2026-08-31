@@ -22,7 +22,11 @@ import torch
 
 from stable_baselines3 import SAC
 from stable_baselines3.common.vec_env import SubprocVecEnv, DummyVecEnv
+from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.callbacks import BaseCallback
+
+import wandb
+from wandb.integration.sb3 import WandbCallback
 
 from rover_env import RoverEnv
 from models import RoverFeaturesExtractor, BlindRoverFeaturesExtractor
@@ -30,7 +34,7 @@ from models import RoverFeaturesExtractor, BlindRoverFeaturesExtractor
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
-N_ENVS = 8  # Scaled up for server CPU parallelism
+N_ENVS = 5  # Scaled up for server CPU parallelism
 TOTAL_STEPS = 10_000_000  # 10M total env steps to train
 CHECKPOINT_DIR = "checkpoints"
 CHECKPOINT_FREQ = 10_000  # save every N steps
@@ -93,6 +97,30 @@ class RewardPlotCallback(BaseCallback):
             self._save_plot()
             self._save_models()
 
+        # --- High-Resolution WandB Logging ---
+        if wandb.run is not None and self.num_timesteps % 50 == 0:
+            infos = self.locals.get("infos", [])
+            if infos:
+                avg_dist = np.mean([i.get("dist", 0.0) for i in infos])
+                avg_tilt = np.mean([i.get("tilt_rad", 0.0) for i in infos])
+                avg_prog = np.mean([i.get("progress", 0.0) for i in infos])
+
+                # Check for episode ends to log flip/success
+                flips = sum([1 for i in infos if i.get("flipped", False)])
+                successes = sum([1 for i in infos if i.get("success", False)])
+
+                wandb.log(
+                    {
+                        "env/live_distance_to_target": avg_dist,
+                        "env/live_tilt_radians": avg_tilt,
+                        "env/live_step_progress": avg_prog,
+                        "env/flips_in_batch": flips,
+                        "env/successes_in_batch": successes,
+                        "env/custom_ep_reward": self._ep_reward,  # Current accumulated reward
+                    },
+                    step=self.num_timesteps,
+                )
+
         return True
 
     def _save_models(self):
@@ -144,6 +172,7 @@ class RewardPlotCallback(BaseCallback):
 def make_env(rank: int, seed: int):
     def _init():
         env = RoverEnv(render_mode=None, blind=BLIND_MODE)
+        env = Monitor(env, info_keywords=("dist", "tilt_rad", "progress"))
         env.reset(seed=seed + rank)
         return env
 
@@ -163,75 +192,76 @@ os.makedirs(CHECKPOINT_DIR, exist_ok=True)
 
 # Initialize wandb by default unless disabled
 callbacks = []
-if not args.nolog:
-    run = wandb.init(
-        project="rocker-bogie-rover",
-        config={
-            "algorithm": "SAC",
-            "n_envs": N_ENVS,
-            "total_steps": TOTAL_STEPS,
-            **SAC_KWARGS,
-        },
-        sync_tensorboard=True,  # Automatically upload SB3's tensorboard metrics
-        save_code=True,
-    )
-    callbacks.append(WandbCallback(gradient_save_freq=100, verbose=2))
+if __name__ == "__main__":
+    if not args.nolog:
+        run = wandb.init(
+            project="rocker-bogie-rover",
+            config={
+                "algorithm": "SAC",
+                "n_envs": N_ENVS,
+                "total_steps": TOTAL_STEPS,
+                **SAC_KWARGS,
+            },
+            sync_tensorboard=True,  # Automatically upload SB3's tensorboard metrics
+            save_code=True,
+        )
+        callbacks.append(WandbCallback(gradient_save_freq=100, verbose=2))
 
-# Initialize vectorized environment across multiple CPU cores
-vec_env = SubprocVecEnv([make_env(i, SEED) for i in range(N_ENVS)])
+    # Initialize vectorized environment across multiple CPU cores
+    vec_env = SubprocVecEnv([make_env(i, SEED) for i in range(N_ENVS)])
 
-plot_callback = RewardPlotCallback(eval_freq=EVAL_FREQ, ckpt_dir=CHECKPOINT_DIR)
-callbacks.append(plot_callback)
+    plot_callback = RewardPlotCallback(eval_freq=EVAL_FREQ, ckpt_dir=CHECKPOINT_DIR)
+    callbacks.append(plot_callback)
 
-# Look for a checkpoint to resume from
-resume_path = None
-if args.resume:
-    latest = os.path.join(CHECKPOINT_DIR, "latest_model.zip")
-    if os.path.exists(latest):
-        resume_path = latest
-        print(f"Resuming from: {resume_path}")
+    # Look for a checkpoint to resume from
+    resume_path = None
+    if args.resume:
+        latest = os.path.join(CHECKPOINT_DIR, "latest_model.zip")
+        if os.path.exists(latest):
+            resume_path = latest
+            print(f"Resuming from: {resume_path}")
+        else:
+            print("No latest_model.zip found to resume from. Starting fresh.")
+
+    if resume_path:
+        model = SAC.load(
+            resume_path,
+            env=vec_env,
+            device=DEVICE,
+            tensorboard_log="runs" if not args.nolog else None,
+        )
     else:
-        print("No latest_model.zip found to resume from. Starting fresh.")
+        model = SAC(
+            "MultiInputPolicy",
+            vec_env,
+            policy_kwargs=POLICY_KWARGS,
+            device=DEVICE,
+            seed=SEED,
+            tensorboard_log="runs" if not args.nolog else None,
+            **SAC_KWARGS,
+        )
 
-if resume_path:
-    model = SAC.load(
-        resume_path,
-        env=vec_env,
-        device=DEVICE,
-        tensorboard_log="runs" if not args.nolog else None,
+    print(
+        f"\nTraining on {DEVICE.upper()} with {N_ENVS} parallel envs (Simulation strictly on CPU)..."
     )
-else:
-    model = SAC(
-        "MultiInputPolicy",
-        vec_env,
-        policy_kwargs=POLICY_KWARGS,
-        device=DEVICE,
-        seed=SEED,
-        tensorboard_log="runs" if not args.nolog else None,
-        **SAC_KWARGS,
+    print(f"Total steps: {TOTAL_STEPS:,}\n")
+
+    model.learn(
+        total_timesteps=TOTAL_STEPS,
+        callback=callbacks,
+        reset_num_timesteps=(resume_path is None),
+        progress_bar=True,  # Enables SB3's native tqdm progress bar
     )
 
-print(
-    f"\nTraining on {DEVICE.upper()} with {N_ENVS} parallel envs (Simulation strictly on CPU)..."
-)
-print(f"Total steps: {TOTAL_STEPS:,}\n")
+    # Final save
+    final_path = os.path.join(CHECKPOINT_DIR, "rover_sac_final.zip")
+    model.save(final_path)
 
-model.learn(
-    total_timesteps=TOTAL_STEPS,
-    callback=callbacks,
-    reset_num_timesteps=(resume_path is None),
-    progress_bar=True,  # Enables SB3's native tqdm progress bar
-)
+    # Inject the algorithm metadata into the same zip file
+    import zipfile
 
-# Final save
-final_path = os.path.join(CHECKPOINT_DIR, "rover_sac_final.zip")
-model.save(final_path)
+    with zipfile.ZipFile(final_path, "a") as zf:
+        zf.writestr("algo.txt", "SAC")
 
-# Inject the algorithm metadata into the same zip file
-import zipfile
-
-with zipfile.ZipFile(final_path, "a") as zf:
-    zf.writestr("algo.txt", "SAC")
-
-print("\nTraining complete. Final model saved.")
-vec_env.close()
+    print("\nTraining complete. Final model saved.")
+    vec_env.close()

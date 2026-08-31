@@ -1,14 +1,14 @@
 <!-- AUTOMATICALLY GENERATED CAMERAS FROM FREECAD FCSTD -->
 <mujoco>
-    <!-- Front Left Camera (Points +X) -->
-    <camera name="cam_front_left" pos="0.25 0.15 0.2" xyaxes="0 -1 0 0 0 1" fovy="60"/>
-    
-    <!-- Side Left Camera (Points +Y) -->
-    <camera name="cam_side_left" pos="0.25 0.15 0.2" xyaxes="1 0 0 0 0 1" fovy="60"/>
-    
-    <!-- Front Right Camera (Points +X) -->
-    <camera name="cam_front_right" pos="0.25 -0.15 0.2" xyaxes="0 -1 0 0 0 1" fovy="60"/>
-    
-    <!-- Side Right Camera (Points -Y) -->
-    <camera name="cam_side_right" pos="0.25 -0.15 0.2" xyaxes="-1 0 0 0 0 1" fovy="60"/>
+<!-- Front Left Camera (Points +X) -->
+<camera name="cam_front_left" pos="0.25 0.15 0.2" xyaxes="0 -1 0 0 0 1" fovy="60"/>
+
+<!-- Side Left Camera (Points +Y) -->
+<camera name="cam_side_left" pos="0.25 0.15 0.2" xyaxes="1 0 0 0 0 1" fovy="60"/>
+
+<!-- Front Right Camera (Points +X) -->
+<camera name="cam_front_right" pos="0.25 -0.15 0.2" xyaxes="0 -1 0 0 0 1" fovy="60"/>
+
+<!-- Side Right Camera (Points -Y) -->
+<camera name="cam_side_right" pos="0.25 -0.15 0.2" xyaxes="-1 0 0 0 0 1" fovy="60"/>
 </mujoco>

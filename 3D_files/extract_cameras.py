@@ -1,3 +1,4 @@
+import sys
 import zipfile
 import xml.etree.ElementTree as ET
 import os
@@ -35,9 +36,10 @@ for obj in object_data.findall("Object"):
                 elif label == "right_camera":
                     right_pos = pos_str
 
+
 if not left_pos or not right_pos:
     print("Error: Could not find left_camera or right_camera in parts.FCStd")
-    return
+    sys.exit(1)
 
 print(f"Found left_camera at:  {left_pos}")
 print(f"Found right_camera at: {right_pos}")

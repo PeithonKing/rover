@@ -11,3 +11,5 @@ scene.xml
 # Python
 __pycache__/
 *.pyc
+wandb
+runs
