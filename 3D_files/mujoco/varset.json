@@ -1,0 +1,11 @@
+{
+	"Label": "VarSet",
+	"Label2": "",
+	"Visibility": "true",
+	"beam_thickness": 25.4,
+	"body_height": 200.0,
+	"body_length": 500.0,
+	"body_width": 300.0,
+	"extra_rod": 40.0,
+	"hole": 15.0
+}

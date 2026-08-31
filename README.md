@@ -1,36 +1,57 @@
 # Autonomous 6-Wheel Rover RL
 
-A Reinforcement Learning pipeline for training a 6-wheel Rocker-Bogie rover in a MuJoCo physics simulation. The AI is trained using Proximal Policy Optimization (PPO) via Stable-Baselines3, utilizing a completely custom PyTorch feature extractor backbone.
+A Reinforcement Learning pipeline for training a 6-wheel Rocker-Bogie rover in a MuJoCo physics simulation. Features a custom PyTorch feature extractor (CNN+MLP), True Ackermann kinematics, and support for both on-policy (PPO) and off-policy (SAC) learning.
+
+## Features
+* **True Ackermann Steering**: The policy controls a 2D action space `[COM_Speed, Steer_Angle]`. The environment dynamically queries 3D wheel anchors to mathematically perfectly drive 6 wheels and angle 4 servos without lateral slip.
+* **Dual Algorithms**: Train using either standard PPO or highly sample-efficient Soft Actor-Critic (SAC).
+* **Weights & Biases Tracking**: Native cloud syncing of tensorboard metrics, model gradients, and custom Matplotlib reward graphs.
+* **Smart Checkpoints**: Automatically tracks and evaluates the `best_model.zip` and `latest_model.zip`.
 
 ## Setup & Installation
 ```bash
-# 1. Install dependencies (includes SB3 [extra] for progress bars)
+# 1. Install dependencies
 pip install -r requirements.txt
 
 # 2. Compile the MuJoCo physics scene from raw assets
 python scene_builder.py
+
+# 3. Authenticate with Weights & Biases (if you want cloud tracking)
+wandb login
 ```
 
 ## Running the Training Pipeline
-How you launch the training script depends on your hardware and environment:
+We provide two distinct training algorithms. SAC is recommended for sample efficiency on this robotics task.
 
-**Option A: Local Laptop (or Blind Mode)**
-If you are training on a laptop, or if you have `BLIND_MODE = True` set in `train.py`, run normally:
+**Train with PPO:**
 ```bash
-python train.py
+python train_ppo.py
 ```
 
-**Option B: Remote Headless Server (Vision Mode)**
-If `BLIND_MODE = False` and you are on a headless server (no physical monitor), you must tell MuJoCo to use hardware-accelerated headless rendering (EGL) so it doesn't crash looking for an X11 display:
+**Train with SAC:**
 ```bash
-MUJOCO_GL=egl python train.py
+python train_sac.py
 ```
-*Note: If EGL throws a `Permission denied` error for `/dev/dri/cardX`, your Linux user does not have GPU access. You must ask a sysadmin to run `sudo usermod -aG render,video $USER`. If you lack sudo, your only workaround is to train using `BLIND_MODE = True`.*
 
-## Evaluation
-Watch the trained AI drive visually (requires a desktop environment / display):
+**Flags for both scripts:**
+* `--nolog` : Disable Weights & Biases tracking (runs strictly local).
+* `--resume`: Resume training instantly from `latest_model.zip`.
+
+### Headless Server Warning
+If `BLIND_MODE = False` (meaning the AI uses camera feeds) and you are on a headless server without a monitor, you must tell MuJoCo to use software rendering or EGL:
+```bash
+LIBGL_ALWAYS_SOFTWARE=1 MUJOCO_GL=egl python train_sac.py
+```
+
+## Evaluation & Testing
+Evaluate the trained AI (requires a local GUI display). The script intelligently looks inside the `.zip` archive to detect the algorithm used and automatically prioritizes `best_model.zip`:
 ```bash
 python evaluate.py
+```
+
+To test the physical suspension over the terrain without an AI driving:
+```bash
+python evaluate_passive.py
 ```
 
 ## License

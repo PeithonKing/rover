@@ -5,14 +5,22 @@ Gymnasium environment for the 6-wheel rocker-bogie rover in MuJoCo.
 
 Observation Space (Dict):
     cameras       → (12, 128, 128) uint8   4×RGB 128×128 images stacked on channel axis
-    numeric       → (12,) float32          [IMU quat(4) + IMU angvel(3) + 4 passive joints
-                                            + target_dx + target_dy]  → 4+3+4+1 = 12 (wait: 4+3=7, +4=11, +2=13... let me count)
-                                            Actually: quat=4, angvel=3, passive_joints=4, rel_target=2 → 13
+    numeric       → (13,) float32          [IMU quat(4) + IMU angvel(3) + 4 passive joints
+                                            + target_dx(local) + target_dy(local)]
 
 Action Space:
-    Box(-1, 1, shape=(10,))
-    [0:6]   → 6 drive wheel velocities   (scaled by MAX_WHEEL_VEL = 29.24 rad/s)
-    [6:10]  → 4 steering angles          (scaled by MAX_STEER_ANG = ±45°)
+    Box(-1, 1, shape=(2,))
+    [0]  → accel_cmd   : incremental acceleration of COM speed.
+                         Clipped so speed stays in [-MAX_COM_SPEED, +MAX_COM_SPEED].
+    [1]  → steer_cmd   : incremental steering delta, suppressed by STEER_RATE.
+                         -1 = sharpest left, 0 = straight, +1 = sharpest right.
+                         Accumulated each step as: steer += steer_cmd * STEER_RATE
+                         Clipped to [-1, 1].
+
+Drive strategy: True Ackermann — 4 corner steering servos lock to computed angles,
+all 6 drive wheels spin at individually correct speeds so NO lateral drag occurs.
+Wheel speeds are computed from each wheel's dynamic xanchor (body-frame), so the
+rocker-bogie suspension geometry is respected frame-by-frame.
 
 Episode:
     - Rover spawns at origin facing +X
@@ -31,41 +39,48 @@ import os
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-SCENE_XML     = os.path.join(os.path.dirname(__file__), "3D_files/mujoco/scene.xml")
-IMG_H, IMG_W  = 128, 128
-N_CAMERAS     = 4
-CAM_NAMES     = ["cam_front_left", "cam_side_left", "cam_front_right", "cam_side_right"]
-MAX_WHEEL_VEL = 29.24   # rad/s
-MAX_STEER_ANG = 0.7854  # rad (±45°)
-MAX_STEPS     = 2000
-SUCCESS_RADIUS = 0.5    # m
-MAX_TILT      = 1.2     # rad (~70°) — beyond this we treat it as flipped
+SCENE_XML = os.path.join(os.path.dirname(__file__), "3D_files/mujoco/scene.xml")
+IMG_H, IMG_W = 128, 128
+N_CAMERAS = 4
+CAM_NAMES = ["cam_front_left", "cam_side_left", "cam_front_right", "cam_side_right"]
+MAX_WHEEL_VEL = 29.24  # rad/s  (physical max of drive motors)
+MAX_COM_SPEED = 2.77  # m/s    (= MAX_WHEEL_VEL * WHEEL_RADIUS, physical cap)
+WHEEL_RADIUS = 0.095  # m      (190mm diameter wheels)
+MAX_STEER_ANG = 0.7854  # rad    (±45° hard cap on servo angle)
+STEER_RATE = 1.0 / 20.0  # steer accumulates at 1/20th per step
+MAX_STEPS = 2000
+SUCCESS_RADIUS = 0.5  # m
+MAX_TILT = 1.2  # rad (~70°) — beyond this we treat it as flipped
 
 # Numeric obs shape: IMU quat(4) + IMU angvel(3) + 4 passive joints + dx + dy = 13
-N_NUMERIC     = 13
+N_NUMERIC = 13
 
-# Drive actuator names (order must match action[0:6])
-DRV_ACTUATORS = [
-    "drv_right_front_wheel", "drv_right_middle_wheel", "drv_right_back_wheel",
-    "drv_left_front_wheel",  "drv_left_middle_wheel",  "drv_left_back_wheel",
+# Drive joint names — [right_front, right_mid, right_back, left_front, left_mid, left_back]
+# Signs: right side Y is negative in body frame, left side Y is positive
+DRV_JOINTS = [
+    (
+        "drv_right_front_wheel",
+        "srv_right_front_rotator",
+        -1,
+    ),  # (drive, steer, lateral_sign)
+    ("drv_right_middle_wheel", None, -1),  # middle has no servo
+    ("drv_right_back_wheel", "srv_right_back_rotator", -1),
+    ("drv_left_front_wheel", "srv_left_front_rotator", +1),
+    ("drv_left_middle_wheel", None, +1),
+    ("drv_left_back_wheel", "srv_left_back_rotator", +1),
 ]
-# Steering actuator names (order must match action[6:10])
-SRV_ACTUATORS = [
-    "srv_right_front_rotator", "srv_right_back_rotator",
-    "srv_left_front_rotator",  "srv_left_back_rotator",
-]
-# Passive joint sensor names (same order as PASSIVE_SENSOR_JOINTS in scene_builder)
+
+# Passive joint sensor names
 PASSIVE_SENSORS = [
-    "sensor_pass_left_rocker", "sensor_pass_right_rocker",
-    "sensor_pass_left_rockerbogie", "sensor_pass_right_rockerbogie",
+    "sensor_pass_left_rocker",
+    "sensor_pass_right_rocker",
+    "sensor_pass_left_rockerbogie",
+    "sensor_pass_right_rockerbogie",
 ]
 
-# Reward weights — tweak these to shape behaviour
-R_PROGRESS       =  10.0   # reward per metre of forward progress towards target
-R_TILT_PENALTY   = -0.5    # per radian of dangerous tilt, per step
-R_TIME_PENALTY   = -0.05   # existence penalty per step → encourages speed
-R_SUCCESS        = 100.0   # one-time bonus for reaching target
-R_FLIP_PENALTY   = -50.0   # one-time penalty for flipping over
+# Reward weights
+R_SUCCESS = 100.0  # one-time bonus for reaching target
+R_FLIP_PENALTY = -50.0  # one-time penalty for flipping over
 
 
 class RoverEnv(gym.Env):
@@ -78,12 +93,40 @@ class RoverEnv(gym.Env):
 
         # Load MuJoCo model
         self.model = mujoco.MjModel.from_xml_path(SCENE_XML)
-        self.data  = mujoco.MjData(self.model)
+        self.data = mujoco.MjData(self.model)
 
         # Pre-cache actuator / sensor IDs for fast lookup
-        self._drv_ids  = [mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_ACTUATOR, n) for n in DRV_ACTUATORS]
-        self._srv_ids  = [mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_ACTUATOR, n) for n in SRV_ACTUATORS]
-        self._sens_ids = {n: mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_SENSOR, n) for n in PASSIVE_SENSORS}
+        # For each wheel: drive actuator ID, servo actuator ID (or None), lateral sign
+        self._wheel_info = []
+        for drv_name, srv_name, lat_sign in DRV_JOINTS:
+            drv_id = mujoco.mj_name2id(
+                self.model, mujoco.mjtObj.mjOBJ_ACTUATOR, drv_name
+            )
+            srv_id = (
+                mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_ACTUATOR, srv_name)
+                if srv_name
+                else None
+            )
+            drv_jnt_id = mujoco.mj_name2id(
+                self.model, mujoco.mjtObj.mjOBJ_JOINT, drv_name
+            )
+            # Store the joint ID for xanchor queries (drive joint anchor = wheel center)
+            self._wheel_info.append(
+                (drv_id, srv_id, drv_jnt_id, lat_sign, drv_name, srv_name)
+            )
+
+        # For dynamic Ackermann geometry: cache steer joint IDs separately for xanchor
+        self._srv_jnt_ids = {}
+        for _, srv_name, _ in DRV_JOINTS:
+            if srv_name and srv_name not in self._srv_jnt_ids:
+                self._srv_jnt_ids[srv_name] = mujoco.mj_name2id(
+                    self.model, mujoco.mjtObj.mjOBJ_JOINT, srv_name
+                )
+
+        self._sens_ids = {
+            n: mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_SENSOR, n)
+            for n in PASSIVE_SENSORS
+        }
 
         # Offscreen renderer for camera images
         if not self.blind:
@@ -95,27 +138,28 @@ class RoverEnv(gym.Env):
         self._target = np.zeros(2)
         self._prev_dist = 0.0
 
+        # Drive state — these accumulate across steps
+        self._com_speed = 0.0  # m/s, current COM speed (modified by accel_cmd)
+        self._current_steer = (
+            0.0  # [-1, 1], current steering state (modified by steer_cmd/20)
+        )
+
         # --- Gym spaces ---
-        self.observation_space = spaces.Dict({
-            "cameras": spaces.Box(low=0, high=255, shape=(N_CAMERAS * 3, IMG_H, IMG_W), dtype=np.uint8),
-            "numeric": spaces.Box(low=-np.inf, high=np.inf, shape=(N_NUMERIC,), dtype=np.float32),
-        })
-        # 10 actions: 6 drive + 4 steer, all in [-1, 1]
-        self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(10,), dtype=np.float32)
+        self.observation_space = spaces.Dict(
+            {
+                "cameras": spaces.Box(
+                    low=0, high=255, shape=(N_CAMERAS * 3, IMG_H, IMG_W), dtype=np.uint8
+                ),
+                "numeric": spaces.Box(
+                    low=-np.inf, high=np.inf, shape=(N_NUMERIC,), dtype=np.float32
+                ),
+            }
+        )
+        # 2 actions: [accel_cmd, steer_cmd]
+        self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(2,), dtype=np.float32)
 
         # Viewer for human render mode
         self._viewer = None
-
-        # Contact evaluation setup
-        self._floor_geom_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_GEOM, "floor")
-        wheel_names = [
-            "wheel_right_front geom", "wheel_right_middle geom", "wheel_right_back geom",
-            "wheel_left_front geom", "wheel_left_middle geom", "wheel_left_back geom"
-        ]
-        self._wheel_geom_ids = [mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_GEOM, w) for w in wheel_names]
-        
-        self._has_landed = False
-        self._air_time_steps = 0
 
     # -----------------------------------------------------------------------
     # Reset
@@ -126,23 +170,23 @@ class RoverEnv(gym.Env):
 
         # Always drop from 50cm — rover settles naturally on its wheels
         # freejoint qpos layout: [x, y, z, qw, qx, qy, qz]
-        root_jnt_id  = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, "root")
-        qpos_adr     = self.model.jnt_qposadr[root_jnt_id]
-        self.data.qpos[qpos_adr:qpos_adr + 3] = [0.0, 0.0, 0.1]  # x, y, z
-        self.data.qpos[qpos_adr + 3]          = 1.0               # qw  (upright)
-        self.data.qpos[qpos_adr + 4:qpos_adr + 7] = 0.0           # qx, qy, qz
+        root_jnt_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, "root")
+        qpos_adr = self.model.jnt_qposadr[root_jnt_id]
+        self.data.qpos[qpos_adr : qpos_adr + 3] = [0.0, 0.0, 0.1]  # x, y, z
+        self.data.qpos[qpos_adr + 3] = 1.0  # qw  (upright)
+        self.data.qpos[qpos_adr + 4 : qpos_adr + 7] = 0.0  # qx, qy, qz
 
-        # Spawn rover at origin. The scene.xml already puts body at world origin.
         # Spawn target 5–5.1m away in a ±90° arc in front (along +X)
-        dist  = self.np_random.uniform(5.0, 5.1)
+        dist = self.np_random.uniform(5.0, 5.1)
         angle = self.np_random.uniform(-np.pi / 2, np.pi / 2)
         self._target = np.array([dist * np.cos(angle), dist * np.sin(angle)])
         self._prev_dist = dist
 
+        # Reset drive state
+        self._com_speed = 0.0
+        self._current_steer = 0.0
         self._steps = 0
-        self._has_landed = False
-        self._air_time_steps = 0
-        obs  = self._get_obs()
+        obs = self._get_obs()
         info = {"target": self._target.copy()}
         return obs, info
 
@@ -151,20 +195,93 @@ class RoverEnv(gym.Env):
     # -----------------------------------------------------------------------
     def step(self, action: np.ndarray):
         action = np.clip(action, -1.0, 1.0)
+        accel_cmd = float(action[0])
+        steer_cmd = float(action[1])
 
-        # Scale and apply drive velocities
-        for i, aid in enumerate(self._drv_ids):
-            self.data.ctrl[aid] = action[i] * MAX_WHEEL_VEL
+        # --- 1. Accumulate drive state ---
+        # Speed: accel_cmd directly shifts COM speed (m/s), then cap
+        self._com_speed = float(
+            np.clip(
+                self._com_speed + accel_cmd * MAX_COM_SPEED * 0.1,
+                -MAX_COM_SPEED,
+                MAX_COM_SPEED,
+            )
+        )
+        # Steer: incremental at 1/20th rate, cap to [-1, 1]
+        self._current_steer = float(
+            np.clip(self._current_steer + steer_cmd * STEER_RATE, -1.0, 1.0)
+        )
 
-        # Scale and apply steering angles
-        for i, aid in enumerate(self._srv_ids):
-            self.data.ctrl[aid] = action[6 + i] * MAX_STEER_ANG
+        # --- 2. Dynamic Ackermann geometry (body frame) ---
+        # Get chassis rotation matrix to project world coords → body frame
+        xmat_inv = self.data.body("body").xmat.reshape(3, 3).T
+        center_pos = self.data.body("body").xpos
 
-        # Advance physics (10 sub-steps for stability)
+        def get_local_pos(jnt_id):
+            """Returns [x_fwd, y_lat, z_up] of a joint anchor in rover body frame."""
+            global_anchor = self.data.xanchor[jnt_id].copy()
+            return np.dot(xmat_inv, global_anchor - center_pos)
+
+        # --- 3. Compute per-wheel commands ---
+        wheel_speeds = []  # m/s at each wheel hub
+        for (
+            drv_id,
+            srv_id,
+            drv_jnt_id,
+            lat_sign,
+            drv_name,
+            srv_name,
+        ) in self._wheel_info:
+            if srv_id is not None:
+                # Corner wheel: steer joint anchor gives precise kinematic pivot
+                srv_jnt_id = self._srv_jnt_ids[srv_name]
+                lp = get_local_pos(srv_jnt_id)
+            else:
+                # Middle wheel: use drive joint anchor for X, lat_sign * track_half for Y
+                lp = get_local_pos(drv_jnt_id)
+
+            X_i = lp[0]  # forward offset from chassis center
+            Y_i = lp[
+                1
+            ]  # lateral offset (positive = left, negative = right in body frame)
+
+            # Yaw rate from steering: sharpest turn (steer=1) = point turn
+            # W_track = 2 * abs(Y_i of any corner wheel). Use dynamic Y.
+            # We clamp to avoid division issues at zero speed / zero steer.
+            W_track = abs(Y_i) * 2.0 if abs(Y_i) > 1e-4 else 0.3546
+
+            omega = self._current_steer * (2.0 * MAX_COM_SPEED / W_track)
+
+            Vx_i = self._com_speed - omega * Y_i  # forward velocity at wheel i
+            Vy_i = omega * X_i  # lateral velocity at wheel i
+
+            # Servo angle (arctan2 gives the toe-in/out angle needed for this arc)
+            if srv_id is not None:
+                steer_angle = float(
+                    np.arctan2(Vy_i, max(abs(Vx_i), 1e-6) * np.sign(Vx_i + 1e-9))
+                )
+                steer_angle = float(np.clip(steer_angle, -MAX_STEER_ANG, MAX_STEER_ANG))
+                self.data.ctrl[srv_id] = steer_angle
+
+            # Drive speed: resultant wheel hub speed → convert to motor rad/s
+            hub_speed = float(np.sqrt(Vx_i**2 + Vy_i**2)) * np.sign(Vx_i + 1e-9)
+            wheel_speeds.append(hub_speed)
+
+        # --- 4. Normalize wheel speeds so no wheel exceeds MAX_WHEEL_VEL ---
+        max_hub = max(abs(s) for s in wheel_speeds) if wheel_speeds else 1.0
+        scale = 1.0 if max_hub <= MAX_COM_SPEED else MAX_COM_SPEED / max_hub
+
+        for i, (drv_id, _, _, _, _, _) in enumerate(self._wheel_info):
+            motor_rads = (wheel_speeds[i] * scale) / WHEEL_RADIUS
+            self.data.ctrl[drv_id] = float(
+                np.clip(motor_rads, -MAX_WHEEL_VEL, MAX_WHEEL_VEL)
+            )
+
+        # --- 5. Advance physics ---
         for _ in range(10):
             mujoco.mj_step(self.model, self.data)
 
-        obs  = self._get_obs()
+        obs = self._get_obs()
         reward, terminated, info = self._compute_reward()
         self._steps += 1
         truncated = self._steps >= MAX_STEPS
@@ -185,24 +302,35 @@ class RoverEnv(gym.Env):
             frames = []
             for cam_name in CAM_NAMES:
                 self._renderer.update_scene(self.data, camera=cam_name)
-                frames.append(self._renderer.render())          # (H, W, 3)
+                frames.append(self._renderer.render())  # (H, W, 3)
             # Stack to (N_CAMERAS*3, H, W)
-            cam_obs = np.concatenate([f.transpose(2, 0, 1) for f in frames], axis=0).astype(np.uint8)
+            cam_obs = np.concatenate(
+                [f.transpose(2, 0, 1) for f in frames], axis=0
+            ).astype(np.uint8)
 
         # --- IMU ---
         # framequat sensor → 4 floats  |  frameangvel → 3 floats
-        imu_quat   = self.data.sensor("imu_quat").data.copy().astype(np.float32)
+        imu_quat = self.data.sensor("imu_quat").data.copy().astype(np.float32)
         imu_angvel = self.data.sensor("imu_angvel").data.copy().astype(np.float32)
 
         # --- Passive joint angles ---
         passive = np.array(
-            [self.data.sensor(n).data[0] for n in PASSIVE_SENSORS],
-            dtype=np.float32
+            [self.data.sensor(n).data[0] for n in PASSIVE_SENSORS], dtype=np.float32
         )
 
-        # --- Relative target vector (world XY → rover body frame) ---
+        # --- Relative target vector (projected to rover body frame) ---
         rover_pos = self.data.body("body").xpos[:2]
-        rel_target = (self._target - rover_pos).astype(np.float32)  # (dx, dy) in world frame
+        world_delta = (self._target - rover_pos).astype(np.float32)
+
+        # Get rover heading yaw from xmat
+        xmat = self.data.body("body").xmat.reshape(3, 3)
+        forward = xmat[:2, 0]  # Local X in world coords
+        right = xmat[:2, 1]  # Local Y in world coords
+
+        # Project delta into rover local frame
+        local_dx = float(np.dot(world_delta, forward))
+        local_dy = float(np.dot(world_delta, right))
+        rel_target = np.array([local_dx, local_dy], dtype=np.float32)
 
         numeric = np.concatenate([imu_quat, imu_angvel, passive, rel_target])  # (13,)
 
@@ -213,64 +341,29 @@ class RoverEnv(gym.Env):
     # -----------------------------------------------------------------------
     def _compute_reward(self):
         rover_pos = self.data.body("body").xpos[:2]
-        dist      = float(np.linalg.norm(self._target - rover_pos))
-        progress  = self._prev_dist - dist        # positive when moving closer
+        dist = float(np.linalg.norm(self._target - rover_pos))
+        progress = self._prev_dist - dist  # positive when moving closer
         self._prev_dist = dist
 
         # Tilt angle: use body xquat directly (world frame, always correct)
         # MuJoCo xquat convention: [w, x, y, z]
         xquat = self.data.body("body").xquat.copy()
         w, x, y, z = xquat
-        body_z_world = np.array([
-            2*(x*z + w*y),
-            2*(y*z - w*x),
-            1 - 2*(x*x + y*y)
-        ])
+        body_z_world = np.array(
+            [2 * (x * z + w * y), 2 * (y * z - w * x), 1 - 2 * (x * x + y * y)]
+        )
         tilt = float(np.arccos(np.clip(body_z_world[2], -1.0, 1.0)))
 
         # Build reward
-        reward     = 0.0
+        reward = 0.0
         terminated = False
-        info       = {"dist": dist, "tilt_rad": tilt, "progress": progress}
+        info = {"dist": dist, "tilt_rad": tilt, "progress": progress}
 
-        # --- THE CARROT & STICK ---
-        # 1. Distance Bleed: Instead of rewarding 'progress', we penalise absolute distance every step.
-        # If the target is 5m away, it bleeds -0.5/step. If it is 1m away, it bleeds -0.1/step.
-        # This completely prevents circling/farming! It forces the AI to rush the target to stop the bleeding.
-        reward -= (dist * 0.1)
+        # Dense progress reward + small step cost to encourage speed
+        reward = (progress * 20.0) - 0.01
 
-        if tilt > 0.3:   
-            reward -= tilt * 1.0  # soft penalty for leaning
-
-        # Check wheel contacts
-        touching_wheels = set()
-        for i in range(self.data.ncon):
-            contact = self.data.contact[i]
-            if contact.geom1 == self._floor_geom_id and contact.geom2 in self._wheel_geom_ids:
-                touching_wheels.add(contact.geom2)
-            elif contact.geom2 == self._floor_geom_id and contact.geom1 in self._wheel_geom_ids:
-                touching_wheels.add(contact.geom1)
-        
-        n_touching = len(touching_wheels)
-        
-        if not self._has_landed and n_touching >= 1:
-            self._has_landed = True
-            
-        if self._has_landed:
-            if n_touching >= 2:
-                # 2. Survival Bonus: Positive reinforcement for keeping wheels on the ground
-                reward += 0.5
-                self._air_time_steps = 0
-            else:
-                # Soft penalty for lifting wheels, but NOT terrifying enough to cause a suicide loop
-                reward -= 1.0
-                self._air_time_steps += 1
-                
-            if self._air_time_steps >= 20:
-                reward += R_FLIP_PENALTY  # Final death penalty
-                terminated = True
-                info["airborne"] = True
-                return reward, terminated, info
+        if tilt > 0.3:
+            reward -= tilt * 0.5  # soft penalty for leaning
 
         if dist < SUCCESS_RADIUS:
             reward += R_SUCCESS
