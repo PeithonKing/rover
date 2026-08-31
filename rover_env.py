@@ -233,11 +233,14 @@ class RoverEnv(gym.Env):
         terminated = False
         info       = {"dist": dist, "tilt_rad": tilt, "progress": progress}
 
-        reward += progress * R_PROGRESS
-        reward += R_TIME_PENALTY
+        # --- THE CARROT & STICK ---
+        # 1. Distance Bleed: Instead of rewarding 'progress', we penalise absolute distance every step.
+        # If the target is 5m away, it bleeds -0.5/step. If it is 1m away, it bleeds -0.1/step.
+        # This completely prevents circling/farming! It forces the AI to rush the target to stop the bleeding.
+        reward -= (dist * 0.1)
 
-        if tilt > 0.3:   # only penalise meaningful tilts
-            reward += tilt * R_TILT_PENALTY
+        if tilt > 0.3:   
+            reward -= tilt * 1.0  # soft penalty for leaning
 
         # Check wheel contacts
         touching_wheels = set()
@@ -254,14 +257,17 @@ class RoverEnv(gym.Env):
             self._has_landed = True
             
         if self._has_landed:
-            if n_touching < 2:
-                reward += R_FLIP_PENALTY * 0.1  # Continuous penalty for wheel lifts
-                self._air_time_steps += 1
-            else:
+            if n_touching >= 2:
+                # 2. Survival Bonus: Positive reinforcement for keeping wheels on the ground
+                reward += 0.5
                 self._air_time_steps = 0
+            else:
+                # Soft penalty for lifting wheels, but NOT terrifying enough to cause a suicide loop
+                reward -= 1.0
+                self._air_time_steps += 1
                 
             if self._air_time_steps >= 20:
-                reward += R_FLIP_PENALTY
+                reward += R_FLIP_PENALTY  # Final death penalty
                 terminated = True
                 info["airborne"] = True
                 return reward, terminated, info
