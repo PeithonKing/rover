@@ -1,16 +1,18 @@
 # Autonomous 6-Wheel Rover RL
 
-A Reinforcement Learning pipeline for training a 6-wheel Rocker-Bogie rover in a MuJoCo physics simulation. Features a custom PyTorch feature extractor (CNN+MLP), True Ackermann kinematics, and support for both on-policy (PPO) and off-policy (SAC) learning.
+A Reinforcement Learning pipeline for training a 6-wheel Rocker-Bogie rover in a MuJoCo physics simulation. Features a custom PyTorch feature extractor (CNN+MLP), True Ackermann kinematics, and a pure TorchRL architecture for maximum asynchronous hardware performance.
 
 ## Features
 * **True Ackermann Steering**: The policy controls a 2D action space `[COM_Speed, Steer_Angle]`. The environment dynamically queries 3D wheel anchors to mathematically perfectly drive 6 wheels and angle 4 servos without lateral slip.
-* **Dual Algorithms**: Train using either standard PPO or highly sample-efficient Soft Actor-Critic (SAC).
+* **Pure TorchRL Architecture**: Completely native PyTorch integration using `EnvBase` and `TensorDict` objects. Zero-copy memory passing for massive speedups on multi-camera setups.
+* **Async Producer-Consumer**: Utilizes `MultiaSyncDataCollector` and `MemmapStorage` to allow the CPU to simulate environments in parallel while the GPU continuously trains.
 * **Weights & Biases Tracking**: Native cloud syncing of tensorboard metrics, model gradients, and custom Matplotlib reward graphs.
-* **Smart Checkpoints**: Automatically tracks and evaluates the `best_model.zip` and `latest_model.zip`.
 
 ## Setup & Installation
 ```bash
 # 1. Install dependencies
+virtualenv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
 
 # 2. Compile the MuJoCo physics scene from raw assets
@@ -21,19 +23,12 @@ wandb login
 ```
 
 ## Running the Training Pipeline
-We provide two distinct training algorithms. SAC is recommended for sample efficiency on this robotics task.
-
-**Train with PPO:**
-```bash
-python train_ppo.py
-```
-
-**Train with SAC:**
+Train the Soft Actor-Critic (SAC) algorithm:
 ```bash
 python train_sac.py
 ```
 
-**Flags for both scripts:**
+**Flags:**
 * `--nolog` : Disable Weights & Biases tracking (runs strictly local).
 * `--resume`: Resume training instantly from `latest_model.zip`.
 
@@ -44,7 +39,7 @@ LIBGL_ALWAYS_SOFTWARE=1 MUJOCO_GL=egl python train_sac.py
 ```
 
 ## Evaluation & Testing
-Evaluate the trained AI (requires a local GUI display). The script intelligently looks inside the `.zip` archive to detect the algorithm used and automatically prioritizes `best_model.zip`:
+Evaluate the trained AI (requires a local GUI display).
 ```bash
 python evaluate.py
 ```

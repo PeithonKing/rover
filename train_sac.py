@@ -1,267 +1,701 @@
 """
-train.py
-========
-PPO training loop for the 6-wheel rover using:
-  - Stable-Baselines3 for PPO algorithm
-  - Our custom RoverFeaturesExtractor PyTorch model (see models.py)
-  - 2 parallel SubprocVecEnv environments (scale up later when bottleneck known)
+train_sac.py
+============
+Pure TorchRL Soft Actor-Critic (SAC) training pipeline for 6-Wheel Rover.
+
+Features:
+- Native TensorDict environment (RoverEnv)
+- Asynchronous multi-worker data collection via MultiAsyncCollector / MultiSyncCollector / Collector
+- LazyMemmapStorage disk-backed replay buffer for high-capacity memory efficiency
+- SACLoss with double Q-networks and auto-tuned entropy temperature
+- Polyak soft target updates via SoftUpdate
+- Weights & Biases telemetry logging and live reward smoothing plot
+- Periodic PyTorch state dict checkpointing (.pt)
 
 Usage:
-python train.py
-python train.py --resume   # continues from last checkpoint
-
-Checkpoints saved to: checkpoints/
-Reward plot saved to: rewards_plot.png  (updated every EVAL_FREQ steps)
+    python train_sac.py --total-timesteps 10000000 --frames-per-batch 64 --batch-size 256
+    python train_sac.py --blind --no-wandb
+    python train_sac.py --resume checkpoints/latest_model.pt
 """
 
 import os
+import sys
+import time
 import argparse
+from typing import Callable, Dict, List, Optional, Tuple, Union
+
+# Set headless MuJoCo rendering backend before importing mujoco
+os.environ.setdefault("MUJOCO_GL", "egl")
+
 import numpy as np
+import matplotlib
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import torch
 
-from stable_baselines3 import SAC
-from stable_baselines3.common.vec_env import SubprocVecEnv, DummyVecEnv
-from stable_baselines3.common.monitor import Monitor
-from stable_baselines3.common.callbacks import BaseCallback
+from tensordict import TensorDict, TensorDictBase
+from tensordict.nn import TensorDictModule
+from torchrl.collectors import Collector, MultiAsyncCollector, MultiSyncCollector
+from torchrl.data import (
+    Bounded,
+    LazyMemmapStorage,
+    LazyTensorStorage,
+    RandomSampler,
+    TensorDictReplayBuffer,
+)
+from torchrl.objectives import SACLoss, SoftUpdate
+from torchrl.modules import ProbabilisticActor
 
 import wandb
-from wandb.integration.sb3 import WandbCallback
 
 from rover_env import RoverEnv
-from models import RoverFeaturesExtractor, BlindRoverFeaturesExtractor
-
-# ---------------------------------------------------------------------------
-# Config
-# ---------------------------------------------------------------------------
-N_ENVS = 5  # Scaled up for server CPU parallelism
-TOTAL_STEPS = 10_000_000  # 10M total env steps to train
-CHECKPOINT_DIR = "checkpoints"
-CHECKPOINT_FREQ = 10_000  # save every N steps
-EVAL_FREQ = 10_000
-SEED = 23
-DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-BLIND_MODE = True  # Set to False to enable cameras and full CNN
-
-FEModel = BlindRoverFeaturesExtractor if BLIND_MODE else RoverFeaturesExtractor
-
-# PPO hyperparameters (sensible starting point for complex continuous control)
-SAC_KWARGS = dict(
-    buffer_size=25000,  # Lowered from 1M to prevent OOM with 4x cameras
-    learning_starts=1000,
-    batch_size=256,
-    tau=0.005,
-    gamma=0.99,
-    train_freq=1,  # Collect 1 step per env, then train
-    gradient_steps=1,  # 1 gradient step per rollout
-    ent_coef="auto",  # SAC automatically tunes entropy
-)
-
-# Custom policy kwargs: plug our own CNN+MLP extractor in
-POLICY_KWARGS = dict(
-    features_extractor_class=FEModel,
-    features_extractor_kwargs={"features_dim": 64},
-    net_arch=[64, 64],  # MLP head after extractor
-    activation_fn=torch.nn.ReLU,
-)
+from models import make_actor, make_critic
 
 
 # ---------------------------------------------------------------------------
-# Reward tracker callback (for the live plot)
+# Helper Functions
 # ---------------------------------------------------------------------------
-class RewardPlotCallback(BaseCallback):
-    def __init__(
-        self,
-        eval_freq: int,
-        save_path: str = "rewards_plot.png",
-        ckpt_dir: str = "checkpoints",
-    ):
-        super().__init__()
-        self.eval_freq = eval_freq
-        self.save_path = save_path
-        self.ckpt_dir = ckpt_dir
-        self.ep_rewards = []
-        self._ep_reward = 0.0
-        self.best_mean_reward = -np.inf
 
-    def _on_step(self) -> bool:
-        rewards = self.locals.get("rewards", [])
-        dones = self.locals.get("dones", [])
-        for r, d in zip(rewards, dones):
-            self._ep_reward += r
-            if d:
-                self.ep_rewards.append(self._ep_reward)
-                self._ep_reward = 0.0
-
-        if self.num_timesteps % self.eval_freq == 0 and self.ep_rewards:
-            self._save_plot()
-            self._save_models()
-
-        # --- High-Resolution WandB Logging ---
-        if wandb.run is not None and self.num_timesteps % 50 == 0:
-            infos = self.locals.get("infos", [])
-            if infos:
-                avg_dist = np.mean([i.get("dist", 0.0) for i in infos])
-                avg_tilt = np.mean([i.get("tilt_rad", 0.0) for i in infos])
-                avg_prog = np.mean([i.get("progress", 0.0) for i in infos])
-
-                # Check for episode ends to log flip/success
-                flips = sum([1 for i in infos if i.get("flipped", False)])
-                successes = sum([1 for i in infos if i.get("success", False)])
-
-                wandb.log(
-                    {
-                        "env/live_distance_to_target": avg_dist,
-                        "env/live_tilt_radians": avg_tilt,
-                        "env/live_step_progress": avg_prog,
-                        "env/flips_in_batch": flips,
-                        "env/successes_in_batch": successes,
-                        "env/custom_ep_reward": self._ep_reward,  # Current accumulated reward
-                    },
-                    step=self.num_timesteps,
-                )
-
-        return True
-
-    def _save_models(self):
-        import zipfile
-
-        # 1. Always save the latest model
-        latest_path = os.path.join(self.ckpt_dir, "latest_model.zip")
-        self.model.save(latest_path)
-        with zipfile.ZipFile(latest_path, "a") as zf:
-            zf.writestr("algo.txt", "SAC")
-
-        # 2. Check if this is the new best model
-        window = min(100, len(self.ep_rewards))
-        mean_reward = np.mean(self.ep_rewards[-window:])
-        if mean_reward > self.best_mean_reward:
-            self.best_mean_reward = mean_reward
-            best_path = os.path.join(self.ckpt_dir, "best_model.zip")
-            self.model.save(best_path)
-            with zipfile.ZipFile(best_path, "a") as zf:
-                zf.writestr("algo.txt", "SAC")
-
-    def _save_plot(self):
-        ep = self.ep_rewards
-        window = min(100, len(ep))
-        smoothed = np.convolve(ep, np.ones(window) / window, mode="valid")
-
-        plt.figure(figsize=(10, 4))
-        plt.plot(ep, alpha=0.3, color="tab:blue", label="Episode reward")
-        plt.plot(smoothed, color="tab:blue", label=f"Smoothed ({window})")
-        plt.xlabel("Episode")
-        plt.ylabel("Total Reward")
-        plt.title(f"Rover RL — {self.num_timesteps:,} steps")
-        plt.legend()
-        plt.grid(True)
-
-        if len(smoothed) > 0:
-            y_min, y_max = np.min(smoothed), np.max(smoothed)
-            padding = max(0.1 * (y_max - y_min), 1.0)
-            plt.ylim(y_min - padding, y_max + padding)
-
-        plt.tight_layout()
-        plt.savefig(self.save_path)
-        plt.close()
-
-
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
-def make_env(rank: int, seed: int):
-    def _init():
-        env = RoverEnv(render_mode=None, blind=BLIND_MODE)
-        env = Monitor(env, info_keywords=("dist", "tilt_rad", "progress"))
-        env.reset(seed=seed + rank)
+def make_env_fn(
+    rank: int = 0,
+    seed: Optional[int] = 23,
+    blind: bool = False,
+    device: Union[str, torch.device] = "cpu",
+) -> Callable[[], RoverEnv]:
+    """Factory returning an initializer for RoverEnv with isolated seed and device."""
+    def _init() -> RoverEnv:
+        env = RoverEnv(render_mode=None, blind=blind, device=device)
+        if seed is not None:
+            env.set_seed(seed + rank)
         return env
 
     return _init
 
 
-parser = argparse.ArgumentParser()
-parser.add_argument(
-    "--resume", action="store_true", help="Resume from latest checkpoint"
-)
-parser.add_argument(
-    "--nolog", action="store_true", help="Disable Weights & Biases logging"
-)
-args = parser.parse_args()
+def build_sac_components(
+    blind: bool = False,
+    device: Union[str, torch.device] = "cpu",
+    lr_actor: float = 3e-4,
+    lr_critic: float = 3e-4,
+    lr_alpha: float = 3e-4,
+    target_entropy: Optional[float] = None,
+    tau: float = 0.005,
+) -> Tuple[
+    ProbabilisticActor,
+    TensorDictModule,
+    SACLoss,
+    SoftUpdate,
+    Dict[str, torch.optim.Optimizer],
+]:
+    """Constructs Actor, Critic, SACLoss, SoftUpdate, and Adam optimizers."""
+    action_spec = Bounded(
+        shape=torch.Size([2]),
+        dtype=torch.float32,
+        low=-1.0,
+        high=1.0,
+        device=device,
+    )
+    actor = make_actor(blind=blind, action_spec=action_spec).to(device)
+    critic = make_critic(blind=blind).to(device)
 
-os.makedirs(CHECKPOINT_DIR, exist_ok=True)
+    if target_entropy is None:
+        target_entropy = -2.0
 
-# Initialize wandb by default unless disabled
-callbacks = []
-if __name__ == "__main__":
-    if not args.nolog:
-        run = wandb.init(
-            project="rocker-bogie-rover",
-            config={
-                "algorithm": "SAC",
-                "n_envs": N_ENVS,
-                "total_steps": TOTAL_STEPS,
-                **SAC_KWARGS,
-            },
-            sync_tensorboard=True,  # Automatically upload SB3's tensorboard metrics
-            save_code=True,
-        )
-        callbacks.append(WandbCallback(gradient_save_freq=100, verbose=2))
+    loss_module = SACLoss(
+        actor_network=actor,
+        qvalue_network=critic,
+        num_qvalue_nets=2,
+        action_spec=action_spec,
+        loss_function="smooth_l1",
+        target_entropy=target_entropy,
+    ).to(device)
 
-    # Initialize vectorized environment across multiple CPU cores
-    vec_env = SubprocVecEnv([make_env(i, SEED) for i in range(N_ENVS)])
+    target_updater = SoftUpdate(loss_module, eps=1.0 - tau)
 
-    plot_callback = RewardPlotCallback(eval_freq=EVAL_FREQ, ckpt_dir=CHECKPOINT_DIR)
-    callbacks.append(plot_callback)
+    actor_params = list(loss_module.actor_network_params.flatten_keys().values())
+    critic_params = list(loss_module.qvalue_network_params.flatten_keys().values())
 
-    # Look for a checkpoint to resume from
-    resume_path = None
-    if args.resume:
-        latest = os.path.join(CHECKPOINT_DIR, "latest_model.zip")
-        if os.path.exists(latest):
-            resume_path = latest
-            print(f"Resuming from: {resume_path}")
-        else:
-            print("No latest_model.zip found to resume from. Starting fresh.")
+    optimizers = {
+        "actor": torch.optim.Adam(actor_params, lr=lr_actor, eps=1e-8),
+        "critic": torch.optim.Adam(critic_params, lr=lr_critic, eps=1e-8),
+        "alpha": torch.optim.Adam([loss_module.log_alpha], lr=lr_alpha, eps=1e-8),
+    }
 
-    if resume_path:
-        model = SAC.load(
-            resume_path,
-            env=vec_env,
-            device=DEVICE,
-            tensorboard_log="runs" if not args.nolog else None,
+    return actor, critic, loss_module, target_updater, optimizers
+
+
+def build_replay_buffer(
+    buffer_size: int = 100_000,
+    batch_size: int = 256,
+    scratch_dir: Optional[str] = "./storage_scratch",
+    device: Union[str, torch.device] = "cpu",
+    use_memmap: bool = True,
+) -> TensorDictReplayBuffer:
+    """Initializes disk-backed LazyMemmapStorage or in-memory LazyTensorStorage replay buffer."""
+    if use_memmap:
+        if scratch_dir is not None:
+            os.makedirs(scratch_dir, exist_ok=True)
+        storage = LazyMemmapStorage(
+            max_size=buffer_size,
+            scratch_dir=scratch_dir,
+            device=device,
+            existsok=True,
         )
     else:
-        model = SAC(
-            "MultiInputPolicy",
-            vec_env,
-            policy_kwargs=POLICY_KWARGS,
-            device=DEVICE,
-            seed=SEED,
-            tensorboard_log="runs" if not args.nolog else None,
-            **SAC_KWARGS,
+        storage = LazyTensorStorage(max_size=buffer_size, device=device)
+
+    buffer = TensorDictReplayBuffer(
+        storage=storage,
+        batch_size=batch_size,
+        sampler=RandomSampler(),
+    )
+    return buffer
+
+
+def build_collector(
+    workers: int = 2,
+    seed: int = 23,
+    blind: bool = False,
+    policy: Optional[ProbabilisticActor] = None,
+    frames_per_batch: int = 64,
+    total_frames: int = 10_000_000,
+    sync: bool = False,
+    device: Union[str, torch.device] = "cpu",
+) -> Union[MultiAsyncCollector, MultiSyncCollector, Collector]:
+    """Constructs asynchronous or synchronous parallel rollout data collector."""
+    if workers > 1:
+        env_fns = [make_env_fn(i, seed=seed, blind=blind, device=device) for i in range(workers)]
+        if sync:
+            collector = MultiSyncCollector(
+                create_env_fn=env_fns,
+                policy=policy,
+                frames_per_batch=frames_per_batch,
+                total_frames=total_frames,
+                device=device,
+                storing_device=device,
+                reset_at_each_iter=False,
+            )
+        else:
+            collector = MultiAsyncCollector(
+                create_env_fn=env_fns,
+                policy=policy,
+                frames_per_batch=frames_per_batch,
+                total_frames=total_frames,
+                device=device,
+                storing_device=device,
+                reset_at_each_iter=False,
+            )
+    else:
+        env_fn = make_env_fn(0, seed=seed, blind=blind, device=device)
+        collector = Collector(
+            create_env_fn=env_fn,
+            policy=policy,
+            frames_per_batch=frames_per_batch,
+            total_frames=total_frames,
+            device=device,
+            storing_device=device,
+            reset_at_each_iter=False,
+        )
+    return collector
+
+
+def extract_telemetry(batch: TensorDictBase) -> Dict[str, float]:
+    """Pulls custom physics telemetry metrics from rollout TensorDict."""
+    next_td = batch.get("next", batch)
+    telemetry: Dict[str, float] = {}
+
+    if "dist" in next_td.keys():
+        telemetry["env/live_distance_to_target"] = float(next_td["dist"].float().mean().item())
+    if "tilt_rad" in next_td.keys():
+        telemetry["env/live_tilt_radians"] = float(next_td["tilt_rad"].float().mean().item())
+    if "progress" in next_td.keys():
+        telemetry["env/live_step_progress"] = float(next_td["progress"].float().mean().item())
+    if "flipped" in next_td.keys():
+        telemetry["env/flips_in_batch"] = float(next_td["flipped"].float().sum().item())
+    if "success" in next_td.keys():
+        telemetry["env/successes_in_batch"] = float(next_td["success"].float().sum().item())
+    if "reward" in next_td.keys():
+        telemetry["env/batch_reward_mean"] = float(next_td["reward"].float().mean().item())
+        telemetry["env/batch_reward_sum"] = float(next_td["reward"].float().sum().item())
+
+    return telemetry
+
+
+def save_checkpoint(
+    path: str,
+    actor: ProbabilisticActor,
+    critic: TensorDictModule,
+    loss_module: SACLoss,
+    optimizers: Dict[str, torch.optim.Optimizer],
+    step: int,
+    best_mean_reward: float,
+    blind: bool = False,
+) -> None:
+    """Persists neural network state dicts and optimizer states to disk (.pt)."""
+    parent_dir = os.path.dirname(path)
+    if parent_dir:
+        os.makedirs(parent_dir, exist_ok=True)
+    state = {
+        "algo": "SAC_TorchRL",
+        "blind": blind,
+        "step": step,
+        "best_mean_reward": best_mean_reward,
+        "actor_state_dict": actor.state_dict(),
+        "critic_state_dict": critic.state_dict(),
+        "loss_module_state_dict": loss_module.state_dict(),
+        "actor_opt": optimizers["actor"].state_dict(),
+        "critic_opt": optimizers["critic"].state_dict(),
+        "alpha_opt": optimizers["alpha"].state_dict(),
+    }
+    torch.save(state, path)
+
+
+def load_checkpoint(
+    path: str,
+    actor: ProbabilisticActor,
+    critic: TensorDictModule,
+    loss_module: SACLoss,
+    optimizers: Dict[str, torch.optim.Optimizer],
+    device: Union[str, torch.device] = "cpu",
+) -> Tuple[int, float]:
+    """Restores model and optimizer states from a .pt checkpoint."""
+    ckpt = torch.load(path, map_location=device, weights_only=False)
+    if "actor_state_dict" in ckpt:
+        actor.load_state_dict(ckpt["actor_state_dict"])
+    if "critic_state_dict" in ckpt:
+        critic.load_state_dict(ckpt["critic_state_dict"])
+    if "loss_module_state_dict" in ckpt:
+        loss_module.load_state_dict(ckpt["loss_module_state_dict"], strict=False)
+    if "actor_opt" in ckpt and "actor" in optimizers:
+        optimizers["actor"].load_state_dict(ckpt["actor_opt"])
+    if "critic_opt" in ckpt and "critic" in optimizers:
+        optimizers["critic"].load_state_dict(ckpt["critic_opt"])
+    if "alpha_opt" in ckpt and "alpha" in optimizers:
+        optimizers["alpha"].load_state_dict(ckpt["alpha_opt"])
+    step = ckpt.get("step", 0)
+    best_mean_reward = ckpt.get("best_mean_reward", -float("inf"))
+    return step, best_mean_reward
+
+
+def save_plot(
+    ep_rewards: List[float],
+    total_steps: int,
+    save_path: str = "rewards_plot.png",
+) -> None:
+    """Generates rolling smoothed episode rewards plot."""
+    if not ep_rewards:
+        return
+    window = min(100, len(ep_rewards))
+    smoothed = np.convolve(ep_rewards, np.ones(window) / window, mode="valid")
+
+    plt.figure(figsize=(10, 4))
+    plt.plot(ep_rewards, alpha=0.3, color="tab:blue", label="Episode reward")
+    plt.plot(
+        np.arange(window - 1, len(ep_rewards)),
+        smoothed,
+        color="tab:blue",
+        label=f"Smoothed ({window})",
+    )
+    plt.xlabel("Episode")
+    plt.ylabel("Total Reward")
+    plt.title(f"Rover RL SAC (TorchRL) — {total_steps:,} steps")
+    plt.legend()
+    plt.grid(True)
+
+    if len(smoothed) > 0:
+        y_min, y_max = float(np.min(smoothed)), float(np.max(smoothed))
+        padding = max(0.1 * (y_max - y_min), 1.0)
+        plt.ylim(y_min - padding, y_max + padding)
+
+    plt.tight_layout()
+    plt.savefig(save_path)
+    plt.close()
+
+
+# ---------------------------------------------------------------------------
+# CLI Argument Parser & Execution Flow
+# ---------------------------------------------------------------------------
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        description="Train 6-Wheel Rover SAC with pure TorchRL and MultiAsyncCollector"
+    )
+    parser.add_argument(
+        "--total-timesteps",
+        type=int,
+        default=10_000_000,
+        help="Total timesteps to collect and train",
+    )
+    parser.add_argument(
+        "--frames-per-batch",
+        type=int,
+        default=64,
+        help="Frames collected per rollout batch",
+    )
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=256,
+        help="Mini-batch size for SAC updates",
+    )
+    parser.add_argument(
+        "--buffer-size",
+        type=int,
+        default=100_000,
+        help="Replay buffer capacity (memmap frames)",
+    )
+    parser.add_argument(
+        "--lr",
+        type=float,
+        default=3e-4,
+        help="Base learning rate for all optimizers",
+    )
+    parser.add_argument(
+        "--lr-actor",
+        type=float,
+        default=None,
+        help="Actor learning rate (defaults to --lr)",
+    )
+    parser.add_argument(
+        "--lr-critic",
+        type=float,
+        default=None,
+        help="Critic learning rate (defaults to --lr)",
+    )
+    parser.add_argument(
+        "--lr-alpha",
+        type=float,
+        default=None,
+        help="Alpha learning rate (defaults to --lr)",
+    )
+    parser.add_argument(
+        "--tau",
+        type=float,
+        default=0.005,
+        help="Target network soft update rate (Polyak)",
+    )
+    parser.add_argument(
+        "--gamma",
+        type=float,
+        default=0.99,
+        help="Discount factor",
+    )
+    parser.add_argument(
+        "--learning-starts",
+        type=int,
+        default=1000,
+        help="Number of transitions in buffer before gradient updates begin",
+    )
+    parser.add_argument(
+        "--gradient-steps",
+        type=int,
+        default=1,
+        help="Number of gradient steps per collector batch",
+    )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=2,
+        help="Number of parallel collector worker processes",
+    )
+    parser.add_argument(
+        "--blind",
+        action="store_true",
+        help="Blind mode (numeric observations only, bypasses camera rendering)",
+    )
+    parser.add_argument(
+        "--wandb",
+        action="store_true",
+        default=True,
+        help="Enable Weights & Biases logging (default: True)",
+    )
+    parser.add_argument(
+        "--no-wandb",
+        action="store_false",
+        dest="wandb",
+        help="Disable Weights & Biases logging",
+    )
+    parser.add_argument(
+        "--scratch-dir",
+        type=str,
+        default="./storage_scratch",
+        help="Directory for LazyMemmapStorage disk backing",
+    )
+    parser.add_argument(
+        "--checkpoint-dir",
+        type=str,
+        default="checkpoints",
+        help="Directory for saving policy checkpoints",
+    )
+    parser.add_argument(
+        "--eval-interval",
+        type=int,
+        default=10_000,
+        help="Step interval for saving plots and evaluation checkpoints",
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=23,
+        help="Random seed for environment and networks",
+    )
+    parser.add_argument(
+        "--device",
+        type=str,
+        default="cuda" if torch.cuda.is_available() else "cpu",
+        help="Device for training neural networks (cuda/cpu)",
+    )
+    parser.add_argument(
+        "--sync",
+        action="store_true",
+        help="Force synchronous multi-worker collection (MultiSyncCollector)",
+    )
+    parser.add_argument(
+        "--resume",
+        type=str,
+        default=None,
+        help="Path to .pt checkpoint file to resume training from",
+    )
+
+    args = parser.parse_args()
+
+    # Resolve learning rates
+    lr_act = args.lr_actor if args.lr_actor is not None else args.lr
+    lr_crt = args.lr_critic if args.lr_critic is not None else args.lr
+    lr_alp = args.lr_alpha if args.lr_alpha is not None else args.lr
+
+    # Set seeds
+    torch.manual_seed(args.seed)
+    np.random.seed(args.seed)
+
+    # Ensure checkpoint and scratch directories exist
+    os.makedirs(args.checkpoint_dir, exist_ok=True)
+    if args.scratch_dir:
+        os.makedirs(args.scratch_dir, exist_ok=True)
+
+    # Build Neural Networks, SAC Loss, and Optimizers
+    actor, critic, loss_module, target_updater, optimizers = build_sac_components(
+        blind=args.blind,
+        device=args.device,
+        lr_actor=lr_act,
+        lr_critic=lr_crt,
+        lr_alpha=lr_alp,
+        tau=args.tau,
+    )
+
+    # Resume from checkpoint if requested
+    start_step = 0
+    best_mean_reward = -float("inf")
+    if args.resume:
+        if os.path.exists(args.resume):
+            start_step, best_mean_reward = load_checkpoint(
+                args.resume,
+                actor=actor,
+                critic=critic,
+                loss_module=loss_module,
+                optimizers=optimizers,
+                device=args.device,
+            )
+            print(f"Resumed from {args.resume} at step {start_step} (best mean reward: {best_mean_reward:.2f})")
+        else:
+            print(f"Resume path {args.resume} not found. Starting fresh from step 0.")
+
+    # Initialize Weights & Biases if enabled
+    if args.wandb:
+        wandb.init(
+            project="rocker-bogie-rover",
+            config={
+                "algorithm": "SAC_TorchRL",
+                "blind": args.blind,
+                "workers": args.workers,
+                "total_timesteps": args.total_timesteps,
+                "frames_per_batch": args.frames_per_batch,
+                "batch_size": args.batch_size,
+                "buffer_size": args.buffer_size,
+                "lr_actor": lr_act,
+                "lr_critic": lr_crt,
+                "lr_alpha": lr_alp,
+                "tau": args.tau,
+                "gamma": args.gamma,
+                "seed": args.seed,
+                "device": args.device,
+            },
         )
 
-    print(
-        f"\nTraining on {DEVICE.upper()} with {N_ENVS} parallel envs (Simulation strictly on CPU)..."
-    )
-    print(f"Total steps: {TOTAL_STEPS:,}\n")
-
-    model.learn(
-        total_timesteps=TOTAL_STEPS,
-        callback=callbacks,
-        reset_num_timesteps=(resume_path is None),
-        progress_bar=True,  # Enables SB3's native tqdm progress bar
+    # Build Memory-Mapped Replay Buffer
+    replay_buffer = build_replay_buffer(
+        buffer_size=args.buffer_size,
+        batch_size=args.batch_size,
+        scratch_dir=args.scratch_dir,
+        device="cpu",
+        use_memmap=True,
     )
 
-    # Final save
-    final_path = os.path.join(CHECKPOINT_DIR, "rover_sac_final.zip")
-    model.save(final_path)
+    # Build MultiAsyncCollector / MultiSyncCollector / Collector
+    collector = build_collector(
+        workers=args.workers,
+        seed=args.seed,
+        blind=args.blind,
+        policy=actor,
+        frames_per_batch=args.frames_per_batch,
+        total_frames=args.total_timesteps,
+        sync=args.sync,
+        device="cpu",
+    )
 
-    # Inject the algorithm metadata into the same zip file
-    import zipfile
+    mode_name = "Blind" if args.blind else "Visual (4 Cameras)"
+    sync_name = "Sync" if args.sync else "Async"
+    print("=" * 80)
+    print(f"STARTING TORCHRL SAC TRAINING: {args.total_timesteps:,} steps")
+    print(f"Device: {args.device.upper()} | Workers: {args.workers} ({sync_name}) | Mode: {mode_name}")
+    print(f"Scratch Dir: {args.scratch_dir} | Replay Capacity: {args.buffer_size:,}")
+    print("=" * 80)
 
-    with zipfile.ZipFile(final_path, "a") as zf:
-        zf.writestr("algo.txt", "SAC")
+    total_collected = start_step
+    ep_rewards: List[float] = []
+    current_ep_reward = 0.0
+    last_eval_step = start_step
+    last_log_time = time.time()
 
-    print("\nTraining complete. Final model saved.")
-    vec_env.close()
+    try:
+        for batch in collector:
+            # Defensively flatten batch across batch dimensions before adding to replay buffer
+            flat_batch = batch.reshape(-1)
+            replay_buffer.extend(flat_batch.to("cpu"))
+
+            num_collected = flat_batch.numel()
+            total_collected += num_collected
+
+            # Extract episode rewards & telemetry
+            next_td = flat_batch.get("next", flat_batch)
+            rewards = next_td.get("reward", None)
+            dones = next_td.get("done", None)
+            if rewards is not None and dones is not None:
+                r_np = rewards.detach().cpu().numpy().reshape(-1)
+                d_np = dones.detach().cpu().numpy().reshape(-1)
+                for r, d in zip(r_np, d_np):
+                    current_ep_reward += float(r)
+                    if d:
+                        ep_rewards.append(current_ep_reward)
+                        current_ep_reward = 0.0
+
+            # Perform gradient updates once buffer reaches sufficient size
+            min_start = max(args.batch_size, min(args.learning_starts, args.buffer_size))
+            losses_summary: Dict[str, float] = {}
+
+            if len(replay_buffer) >= min_start:
+                for _ in range(args.gradient_steps):
+                    sample_td = replay_buffer.sample().to(args.device)
+                    loss_td = loss_module(sample_td)
+
+                    loss_critic = loss_td["loss_qvalue"]
+                    loss_actor = loss_td["loss_actor"]
+                    loss_alpha = loss_td["loss_alpha"]
+
+                    # 1. Zero all gradients
+                    optimizers["critic"].zero_grad()
+                    optimizers["actor"].zero_grad()
+                    optimizers["alpha"].zero_grad()
+
+                    # 2. Compute all backward passes
+                    loss_critic.backward()
+                    loss_actor.backward()
+                    loss_alpha.backward()
+
+                    # 3. Apply optimizer steps
+                    optimizers["critic"].step()
+                    optimizers["actor"].step()
+                    optimizers["alpha"].step()
+
+                    # 4. Target network soft update
+                    target_updater.step()
+
+                    losses_summary["train/loss_critic"] = float(loss_critic.detach().item())
+                    losses_summary["train/loss_actor"] = float(loss_actor.detach().item())
+                    losses_summary["train/loss_alpha"] = float(loss_alpha.detach().item())
+                    if hasattr(loss_module, "log_alpha"):
+                        losses_summary["train/alpha"] = float(loss_module.log_alpha.exp().item())
+
+                # Synchronize policy weights to asynchronous rollout workers
+                if hasattr(collector, "update_policy_weights_"):
+                    collector.update_policy_weights_()
+
+            # Telemetry logging & progress reporting
+            now = time.time()
+            if now - last_log_time >= 2.0 or total_collected >= args.total_timesteps:
+                last_log_time = now
+                telemetry = extract_telemetry(flat_batch)
+                log_dict = {**telemetry, **losses_summary}
+                if ep_rewards:
+                    window = min(100, len(ep_rewards))
+                    log_dict["env/mean_ep_reward_100"] = float(np.mean(ep_rewards[-window:]))
+                    log_dict["env/latest_ep_reward"] = float(ep_rewards[-1])
+
+                if args.wandb and wandb.run is not None:
+                    wandb.log(log_dict, step=total_collected)
+
+                mean_rew_str = f"{np.mean(ep_rewards[-20:]):.1f}" if ep_rewards else "N/A"
+                dist_str = f"{telemetry.get('env/live_distance_to_target', 0.0):.2f}m"
+                loss_c_str = f"{losses_summary.get('train/loss_critic', 0.0):.3f}"
+                print(
+                    f"Step {total_collected:>8,}/{args.total_timesteps:,} | Buffer: {len(replay_buffer):>6,} | "
+                    f"Rew (20ep): {mean_rew_str:>7} | Dist: {dist_str:>6} | Loss-Q: {loss_c_str}"
+                )
+
+            # Periodic evaluation, plotting, and checkpointing
+            if total_collected - last_eval_step >= args.eval_interval:
+                last_eval_step = total_collected
+                save_plot(ep_rewards, total_collected, save_path="rewards_plot.png")
+
+                # Save latest checkpoint
+                latest_ckpt = os.path.join(args.checkpoint_dir, "latest_model.pt")
+                save_checkpoint(
+                    latest_ckpt,
+                    actor=actor,
+                    critic=critic,
+                    loss_module=loss_module,
+                    optimizers=optimizers,
+                    step=total_collected,
+                    best_mean_reward=best_mean_reward,
+                    blind=args.blind,
+                )
+
+                # Save best checkpoint if rolling mean reward improved
+                if ep_rewards:
+                    window = min(100, len(ep_rewards))
+                    current_mean_100 = float(np.mean(ep_rewards[-window:]))
+                    if current_mean_100 > best_mean_reward:
+                        best_mean_reward = current_mean_100
+                        best_ckpt = os.path.join(args.checkpoint_dir, "best_model.pt")
+                        save_checkpoint(
+                            best_ckpt,
+                            actor=actor,
+                            critic=critic,
+                            loss_module=loss_module,
+                            optimizers=optimizers,
+                            step=total_collected,
+                            best_mean_reward=best_mean_reward,
+                            blind=args.blind,
+                        )
+                        print(f"*** New best model saved ({best_mean_reward:.2f}) -> {best_ckpt} ***")
+
+    finally:
+        collector.shutdown()
+
+    # Final checkpoint save on completion
+    save_plot(ep_rewards, total_collected, save_path="rewards_plot.png")
+    final_ckpt = os.path.join(args.checkpoint_dir, "rover_sac_final.pt")
+    save_checkpoint(
+        final_ckpt,
+        actor=actor,
+        critic=critic,
+        loss_module=loss_module,
+        optimizers=optimizers,
+        step=total_collected,
+        best_mean_reward=best_mean_reward,
+        blind=args.blind,
+    )
+    print(f"Training finished. Final checkpoint saved -> {final_ckpt}")
+
+    if args.wandb and wandb.run is not None:
+        wandb.finish()

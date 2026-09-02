@@ -8,5 +8,6 @@ mujoco
 matplotlib
 tqdm
 rich
-stable-baselines3[extra]
+torchrl
+tensordict
 wandb
