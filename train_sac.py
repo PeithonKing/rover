@@ -21,6 +21,7 @@ Usage:
 import os
 import sys
 import time
+from tqdm import tqdm
 import argparse
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
@@ -335,7 +336,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--batch-size",
         type=int,
-        default=256,
+        default=512,
         help="Mini-batch size for SAC updates",
     )
     parser.add_argument(
@@ -389,13 +390,13 @@ if __name__ == "__main__":
     parser.add_argument(
         "--gradient-steps",
         type=int,
-        default=1,
+        default=4,
         help="Number of gradient steps per collector batch",
     )
     parser.add_argument(
         "--workers",
         type=int,
-        default=2,
+        default=4,
         help="Number of parallel collector worker processes",
     )
     parser.add_argument(
@@ -557,6 +558,7 @@ if __name__ == "__main__":
     last_eval_step = start_step
     last_log_time = time.time()
 
+    pbar = tqdm(total=args.total_timesteps, desc="Training SAC")
     try:
         for batch in collector:
             # Defensively flatten batch across batch dimensions before adding to replay buffer
@@ -565,6 +567,7 @@ if __name__ == "__main__":
 
             num_collected = flat_batch.numel()
             total_collected += num_collected
+            pbar.update(num_collected)
 
             # Extract episode rewards & telemetry
             next_td = flat_batch.get("next", flat_batch)
@@ -637,10 +640,7 @@ if __name__ == "__main__":
                 mean_rew_str = f"{np.mean(ep_rewards[-20:]):.1f}" if ep_rewards else "N/A"
                 dist_str = f"{telemetry.get('env/live_distance_to_target', 0.0):.2f}m"
                 loss_c_str = f"{losses_summary.get('train/loss_critic', 0.0):.3f}"
-                print(
-                    f"Step {total_collected:>8,}/{args.total_timesteps:,} | Buffer: {len(replay_buffer):>6,} | "
-                    f"Rew (20ep): {mean_rew_str:>7} | Dist: {dist_str:>6} | Loss-Q: {loss_c_str}"
-                )
+                pbar.set_description(f"Rew: {mean_rew_str} | Dist: {dist_str} | L-Q: {loss_c_str}")
 
             # Periodic evaluation, plotting, and checkpointing
             if total_collected - last_eval_step >= args.eval_interval:
@@ -681,6 +681,7 @@ if __name__ == "__main__":
 
     finally:
         collector.shutdown()
+        pbar.close()
 
     # Final checkpoint save on completion
     save_plot(ep_rewards, total_collected, save_path="rewards_plot.png")
