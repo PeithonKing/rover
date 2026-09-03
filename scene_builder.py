@@ -28,7 +28,7 @@ MAX_WHEEL_VEL = 29.24  # rad/s  ← 10 km/h with 190mm diameter wheels
 MAX_STEER_ANG = 0.7854  # rad    ← ±45 degrees
 WHEEL_MASS_KG = 0.3  # per wheel (rubber + hub estimate)
 CHASSIS_AREA_KG_PER_M2 = (
-    0.54  # 2mm aluminum hollow shell: 2.7 g/cm³ × 0.2cm = 0.54 g/cm²
+    5.4  # 2mm aluminum hollow shell: 2.7 g/cm³ × 0.2cm = 0.54 g/cm² = 5.4 kg/m²
 )
 
 # Joints we monitor as passive sensors (4 rocker-bogie angles)
@@ -111,22 +111,21 @@ for mesh_tag in asset.findall("mesh"):
             geom.set("mass", f"{mass_kg:.6f}")
             break
 
-    # Wheels get minimum floor mass regardless
+    # Wheels get high friction, and hard-coded to 200g (0.2kg)
     if "wheel" in mesh_name:
         for geom in root.iter("geom"):
             if geom.get("mesh") == mesh_name:
-                geom.set("mass", str(max(mass_kg, WHEEL_MASS_KG)))
+                if "rotator" not in mesh_name:
+                    geom.set("mass", "0.2")  # Real wheels hardcoded to 200g
+                
+                geom.set("friction", "2.0 0.005 0.0001")  # Stop Tokyo drifts!
                 break
 
 print("  [✓] Mass assigned from OBJ surface areas (2mm Al shell).")
 
 # -----------------------------------------------------------------------
 # 5. Rebuild actuator block
-#    - drv_ joints → <velocity> actuators (max force=200N, max vel=29.24)
-#    - srv_ joints → <position> actuators (kp=500, range=±45°)
-#    - pass_ joints → NO actuator (passive, like real rover)
 # -----------------------------------------------------------------------
-# Collect all joints first
 drv_joints = []
 srv_joints = []
 pass_joints = []
@@ -139,7 +138,6 @@ for joint in root.iter("joint"):
     elif name.startswith("pass_"):
         pass_joints.append(name)
 
-# Wipe the entire <actuator> block
 actuator = root.find("actuator")
 if actuator is None:
     actuator = ET.SubElement(root, "actuator")
@@ -154,10 +152,10 @@ for jname in drv_joints:
         {
             "name": jname,
             "joint": jname,
-            "kv": "50",
+            "kv": "5",
             "forcelimited": "true",
-            "forcerange": "-200 200",
-            "gear": str(MAX_WHEEL_VEL),  # scale: ctrl=±1 maps to ±MAX_WHEEL_VEL
+            "forcerange": "-10 10",
+            "gear": "-1",
         },
     )
 
@@ -170,7 +168,7 @@ for jname in srv_joints:
             "name": jname,
             "joint": jname,
             "kp": "500",
-            "gear": str(MAX_STEER_ANG),
+            "gear": str(-MAX_STEER_ANG),  # Flipped steering direction
         },
     )
 
@@ -180,13 +178,14 @@ print(
 )
 
 # -----------------------------------------------------------------------
-# 6. Add joint damping to all passive suspension joints so they don't
-#    oscillate like crazy. Drive joints get low damping so the motor wins.
+# 6. Add joint damping AND STIFFNESS to all passive suspension joints 
+#    so they don't fold up and lift the middle wheel.
 # -----------------------------------------------------------------------
 for joint in root.iter("joint"):
     name = joint.get("name", "")
     if name.startswith("pass_"):
-        joint.set("damping", "5.0")
+        joint.set("damping", "20.0")   # High damping
+        joint.set("stiffness", "100.0") # High stiffness so it holds its shape
         joint.set("armature", "0.01")
     elif name.startswith("drv_"):
         joint.set("damping", "0.5")
@@ -220,7 +219,7 @@ for jname in PASSIVE_SENSOR_JOINTS:
 print(f"  [✓] Sensors: IMU (quat + angvel) + {len(PASSIVE_SENSOR_JOINTS)} jointpos.")
 
 # -----------------------------------------------------------------------
-# 8. Inject cameras + freejoint into the chassis body
+# 8. Inject cameras + freejoint into the chassis body, and add Target Marker
 # -----------------------------------------------------------------------
 chassis = root.find(".//body[@name='body']")
 if chassis is not None:
@@ -234,6 +233,18 @@ if chassis is not None:
     )
 else:
     print("  [!] WARNING: Could not find body named 'body'. Cameras NOT injected.")
+
+# Add target marker to worldbody (Yellow Sphere)
+worldbody = root.find("worldbody")
+if worldbody is not None:
+    ET.SubElement(worldbody, "site", {
+        "name": "target_marker",
+        "type": "sphere",
+        "size": "0.5",
+        "pos": "0 0 0.299",  # Floor is at Z=-0.201. Center = 0.5 - 0.201 = 0.299
+        "rgba": "1 1 0 0.5"  # Yellow, semi-transparent
+    })
+    print("  [✓] Injected yellow target marker sphere.")
 
 # -----------------------------------------------------------------------
 # 9. Write scene.xml

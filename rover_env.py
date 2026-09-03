@@ -250,6 +250,11 @@ class RoverEnv(EnvBase):
         angle = float(self.np_random.uniform(-np.pi / 2, np.pi / 2))
         self._target = np.array([dist * np.cos(angle), dist * np.sin(angle)], dtype=np.float32)
         self._prev_dist = dist
+        
+        # Update yellow sphere marker position in MuJoCo scene
+        site_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_SITE, "target_marker")
+        if site_id != -1:
+            self.model.site_pos[site_id][:2] = self._target
 
         # Reset drive state
         self._com_speed = 0.0
@@ -290,7 +295,7 @@ class RoverEnv(EnvBase):
         accel_cmd = float(action_np[0])
         steer_cmd = float(action_np[1])
 
-        # 1. Accumulate drive state
+        # 1. Accumulate drive state (Original Momentum Physics)
         self._com_speed = float(
             np.clip(
                 self._com_speed + accel_cmd * MAX_COM_SPEED * 0.1,
