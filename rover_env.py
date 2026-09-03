@@ -488,7 +488,7 @@ class RoverEnv(EnvBase):
             return self._renderer.render()
         return None
 
-    def close(self) -> None:
+    def close(self, *args, **kwargs) -> None:
         """Cleans up viewer and renderer resources."""
         if self._viewer is not None:
             self._viewer.close()
