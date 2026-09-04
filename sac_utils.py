@@ -38,10 +38,24 @@ def make_env_fn(
     seed: Optional[int] = 23,
     blind: bool = False,
     device: Union[str, torch.device] = "cpu",
+    control_mode: str = "ackermann",
+    vision_mode: str = "blind",
+    terrain_mode: str = "flat",
+    reward_mode: str = "standard",
+    xml_path: Optional[str] = None,
 ) -> Callable[[], RoverEnv]:
     """Factory returning an initializer for RoverEnv with isolated seed and device."""
     def _init() -> RoverEnv:
-        env = RoverEnv(render_mode=None, blind=blind, device=device)
+        env = RoverEnv(
+            render_mode=None,
+            blind=blind,
+            control_mode=control_mode,
+            vision_mode=vision_mode,
+            terrain_mode=terrain_mode,
+            reward_mode=reward_mode,
+            xml_path=xml_path,
+            device=device,
+        )
         if seed is not None:
             env.set_seed(seed + rank)
         return env
@@ -57,6 +71,9 @@ def build_sac_components(
     lr_alpha: float = 3e-4,
     target_entropy: Optional[float] = None,
     tau: float = 0.005,
+    action_dim: Optional[int] = None,
+    action_spec: Optional[Bounded] = None,
+    control_mode: str = "ackermann",
 ) -> Tuple[
     ProbabilisticActor,
     TensorDictModule,
@@ -65,18 +82,32 @@ def build_sac_components(
     Dict[str, torch.optim.Optimizer],
 ]:
     """Constructs Actor, Critic, SACLoss, SoftUpdate, and Adam optimizers."""
-    action_spec = Bounded(
-        shape=torch.Size([2]),
-        dtype=torch.float32,
-        low=-1.0,
-        high=1.0,
-        device=device,
-    )
-    actor = make_actor(blind=blind, action_spec=action_spec).to(device)
-    critic = make_critic(blind=blind).to(device)
+    if action_dim is None:
+        if action_spec is not None:
+            action_dim = int(action_spec.shape[-1])
+        elif str(control_mode).lower().strip() in ("direct", "10d"):
+            action_dim = 10
+        else:
+            action_dim = 2
+
+    if action_spec is None:
+        action_spec = Bounded(
+            shape=torch.Size([action_dim]),
+            dtype=torch.float32,
+            low=-1.0,
+            high=1.0,
+            device=device,
+        )
+
+    actor = make_actor(
+        blind=blind, action_spec=action_spec, action_dim=action_dim
+    ).to(device)
+    critic = make_critic(
+        blind=blind, action_spec=action_spec, action_dim=action_dim
+    ).to(device)
 
     if target_entropy is None:
-        target_entropy = -2.0
+        target_entropy = -float(action_dim)
 
     loss_module = SACLoss(
         actor_network=actor,
@@ -86,6 +117,7 @@ def build_sac_components(
         loss_function="smooth_l1",
         target_entropy=target_entropy,
     ).to(device)
+    loss_module.action_spec = action_spec
 
     target_updater = SoftUpdate(loss_module, eps=1.0 - tau)
 
@@ -138,6 +170,11 @@ def build_collector(
     total_frames: int = 10_000_000,
     sync: bool = False,
     device: Union[str, torch.device] = "cpu",
+    control_mode: str = "ackermann",
+    vision_mode: str = "blind",
+    terrain_mode: str = "flat",
+    reward_mode: str = "standard",
+    xml_path: Optional[str] = None,
 ) -> Union[MultiAsyncCollector, MultiSyncCollector, Collector]:
     """Constructs asynchronous or synchronous parallel rollout data collector."""
     if workers > 1:
@@ -146,7 +183,20 @@ def build_collector(
             mp.set_start_method("fork", force=True)
         except RuntimeError:
             pass
-        env_fns = [make_env_fn(i, seed=seed, blind=blind, device=device) for i in range(workers)]
+        env_fns = [
+            make_env_fn(
+                i,
+                seed=seed,
+                blind=blind,
+                device=device,
+                control_mode=control_mode,
+                vision_mode=vision_mode,
+                terrain_mode=terrain_mode,
+                reward_mode=reward_mode,
+                xml_path=xml_path,
+            )
+            for i in range(workers)
+        ]
         if sync:
             collector = MultiSyncCollector(
                 create_env_fn=env_fns,
@@ -168,7 +218,17 @@ def build_collector(
                 reset_at_each_iter=False,
             )
     else:
-        env_fn = make_env_fn(0, seed=seed, blind=blind, device=device)
+        env_fn = make_env_fn(
+            0,
+            seed=seed,
+            blind=blind,
+            device=device,
+            control_mode=control_mode,
+            vision_mode=vision_mode,
+            terrain_mode=terrain_mode,
+            reward_mode=reward_mode,
+            xml_path=xml_path,
+        )
         collector = Collector(
             create_env_fn=env_fn,
             policy=policy,
@@ -280,7 +340,7 @@ def save_plot(
     )
     plt.xlabel("Episode")
     plt.ylabel("Total Reward")
-    plt.title(f"Rover RL SAC (TorchRL) — {total_steps:,} steps")
+    plt.title(f"Rover RL SAC (TorchRL) - {total_steps:,} steps")
     plt.legend()
     plt.grid(True)
 

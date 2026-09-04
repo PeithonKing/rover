@@ -31,9 +31,22 @@ from models import make_actor, make_ppo_critic
 os.environ.setdefault("MUJOCO_GL", "egl")
 
 
-def make_env_creator(blind: bool = False, max_steps: int = 2000):
+def make_env_creator(
+    control_mode: str = "ackermann",
+    vision_mode: str = "blind",
+    terrain: str = "flat",
+    reward_mode: str = "standard",
+    max_steps: int = 2000,
+):
     def _create_env():
-        env = RoverEnv(blind=blind, render_mode="rgb_array")
+        render_mode = "rgb_array" if vision_mode != "blind" else None
+        env = RoverEnv(
+            control_mode=control_mode,
+            vision_mode=vision_mode,
+            terrain_mode=terrain,
+            reward_mode=reward_mode,
+            render_mode=render_mode,
+        )
         env = TransformedEnv(env, StepCounter(max_steps=max_steps))
         return env
     return _create_env
@@ -49,7 +62,7 @@ def save_plot(ep_rewards, step, save_path="rewards_plot_ppo.png"):
         plt.plot(range(99, len(ep_rewards)), smoothed, label="Smoothed (100)", color="C0")
     plt.xlabel("Episode")
     plt.ylabel("Total Reward")
-    plt.title(f"Rover RL PPO (TorchRL) — {step:,} steps")
+    plt.title(f"Rover RL PPO (TorchRL) - {step:,} steps")
     plt.grid(True)
     plt.legend()
     plt.tight_layout()
@@ -72,7 +85,7 @@ def save_checkpoint(path, actor, critic, optim, step, best_mean_reward, blind):
     torch.save(state, path)
 
 
-parser = argparse.ArgumentParser()
+parser = argparse.ArgumentParser(description="Train 6-Wheel Rover PPO with pure TorchRL")
 parser.add_argument("--workers", type=int, default=4)
 parser.add_argument("--total-timesteps", type=int, default=10_000_000)
 parser.add_argument("--frames-per-batch", type=int, default=2048)
@@ -83,28 +96,73 @@ parser.add_argument("--clip-epsilon", type=float, default=0.2)
 parser.add_argument("--entropy-coef", type=float, default=0.01)
 parser.add_argument("--gamma", type=float, default=0.99)
 parser.add_argument("--lmbda", type=float, default=0.95)
-parser.add_argument("--blind", action="store_true")
+parser.add_argument(
+    "--control-mode",
+    type=str,
+    choices=["ackermann", "direct"],
+    default="ackermann",
+    help="Control scheme ('ackermann' or 'direct')",
+)
+parser.add_argument(
+    "--vision-mode",
+    type=str,
+    choices=["blind", "depth", "depthmap", "rgb"],
+    default=None,
+    help="Visual perception mode ('blind', 'depth', 'depthmap', 'rgb')",
+)
+parser.add_argument(
+    "--terrain",
+    type=str,
+    choices=["flat"],
+    default="flat",
+    help="Terrain world environment ('flat')",
+)
+parser.add_argument(
+    "--reward-mode",
+    type=str,
+    choices=["standard", "energy"],
+    default="standard",
+    help="Reward objective formulation ('standard', 'energy')",
+)
+parser.add_argument("--blind", action="store_true", help="Blind mode shortcut")
 parser.add_argument("--no-wandb", action="store_true")
 parser.add_argument("--checkpoint-dir", type=str, default="checkpoints")
 args = parser.parse_args()
+
+# Resolve vision_mode and blind flag
+if args.vision_mode is None:
+    vision_mode = "blind" if args.blind else "rgb"
+else:
+    vision_mode = args.vision_mode
+blind = (vision_mode == "blind")
 
 args.checkpoint_dir = os.path.join(args.checkpoint_dir, "ppo")
 os.makedirs(args.checkpoint_dir, exist_ok=True)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 if not args.no_wandb:
-    wandb.init(project="rover_rl", name=f"ppo_blind_{args.blind}", config=vars(args))
+    wandb.init(
+        project="rover_rl",
+        name=f"ppo_{args.control_mode}_{vision_mode}",
+        config=vars(args),
+    )
 
 # Env
-dummy_env = make_env_creator(args.blind)()
+env_creator = make_env_creator(
+    control_mode=args.control_mode,
+    vision_mode=vision_mode,
+    terrain=args.terrain,
+    reward_mode=args.reward_mode,
+)
+dummy_env = env_creator()
 action_spec = dummy_env.action_spec
 dummy_env.close()
 
-env = ParallelEnv(args.workers, make_env_creator(args.blind), mp_start_method="fork")
+env = ParallelEnv(args.workers, env_creator, mp_start_method="fork")
 
 # Networks
-actor = make_actor(blind=args.blind, action_spec=action_spec).to(device)
-critic = make_ppo_critic(blind=args.blind).to(device)
+actor = make_actor(blind=blind, action_spec=action_spec).to(device)
+critic = make_ppo_critic(blind=blind).to(device)
 
 # Optimizer
 optim = torch.optim.Adam(list(actor.parameters()) + list(critic.parameters()), lr=args.lr)
@@ -145,7 +203,7 @@ current_ep_reward = 0.0
 best_mean_reward = -float("inf")
 total_collected = 0
 
-print(f"Starting PPO training on {device} (Blind: {args.blind})")
+print(f"Starting PPO training on {device} (Mode: {vision_mode}, Control: {args.control_mode})")
 
 for i, tensordict_data in enumerate(collector):
     with torch.no_grad():
@@ -193,7 +251,7 @@ for i, tensordict_data in enumerate(collector):
             if len(ep_rewards) % 10 == 0:
                 save_checkpoint(
                     os.path.join(args.checkpoint_dir, f"rover_ep_{len(ep_rewards)}.pt"),
-                    actor, critic, optim, total_collected, best_mean_reward, args.blind
+                    actor, critic, optim, total_collected, best_mean_reward, blind
                 )
     
     # Logging
@@ -213,7 +271,7 @@ for i, tensordict_data in enumerate(collector):
         save_plot(ep_rewards, total_collected, save_path="rewards_plot_ppo.png")
         save_checkpoint(
             os.path.join(args.checkpoint_dir, "latest_model.pt"),
-            actor, critic, optim, total_collected, best_mean_reward, args.blind
+            actor, critic, optim, total_collected, best_mean_reward, blind
         )
 
 collector.shutdown()

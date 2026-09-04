@@ -21,4 +21,6 @@ runs
 .agents/
 .pytest_cache/
 storage_scratch/
-tests
+testsMUJOCO_LOG.TXT
+rewards_plot_ppo.png
+MUJOCO_LOG.TXT

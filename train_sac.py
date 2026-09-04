@@ -155,9 +155,37 @@ parser.add_argument(
     help="Number of parallel collector worker processes",
 )
 parser.add_argument(
+    "--control-mode",
+    type=str,
+    choices=["ackermann", "direct"],
+    default="ackermann",
+    help="Control scheme ('ackermann' or 'direct')",
+)
+parser.add_argument(
+    "--vision-mode",
+    type=str,
+    choices=["blind", "depth", "depthmap", "rgb"],
+    default=None,
+    help="Visual perception mode ('blind', 'depth', 'depthmap', 'rgb')",
+)
+parser.add_argument(
+    "--terrain",
+    type=str,
+    choices=["flat"],
+    default="flat",
+    help="Terrain world environment ('flat')",
+)
+parser.add_argument(
+    "--reward-mode",
+    type=str,
+    choices=["standard", "energy"],
+    default="standard",
+    help="Reward objective formulation ('standard', 'energy')",
+)
+parser.add_argument(
     "--blind",
     action="store_true",
-    help="Blind mode (numeric observations only, bypasses camera rendering)",
+    help="Blind mode shortcut (numeric observations only, bypasses camera rendering)",
 )
 parser.add_argument(
     "--wandb",
@@ -215,6 +243,13 @@ parser.add_argument(
 
 args = parser.parse_args()
 
+# Resolve vision_mode and blind flag
+if args.vision_mode is None:
+    vision_mode = "blind" if args.blind else "rgb"
+else:
+    vision_mode = args.vision_mode
+blind = (vision_mode == "blind")
+
 # Resolve learning rates
 lr_act = args.lr_actor if args.lr_actor is not None else args.lr
 lr_crt = args.lr_critic if args.lr_critic is not None else args.lr
@@ -233,12 +268,13 @@ if args.scratch_dir:
 
 # Build Neural Networks, SAC Loss, and Optimizers
 actor, critic, loss_module, target_updater, optimizers = build_sac_components(
-    blind=args.blind,
+    blind=blind,
     device=args.device,
     lr_actor=lr_act,
     lr_critic=lr_crt,
     lr_alpha=lr_alp,
     tau=args.tau,
+    control_mode=args.control_mode,
 )
 
 # Force the initial entropy temperature (alpha) to 1.0 for massive early exploration
@@ -296,19 +332,23 @@ replay_buffer = build_replay_buffer(
 collector = build_collector(
     workers=args.workers,
     seed=args.seed,
-    blind=args.blind,
+    blind=blind,
     policy=actor,
     frames_per_batch=args.frames_per_batch,
     total_frames=args.total_timesteps,
     sync=args.sync,
     device="cpu",
+    control_mode=args.control_mode,
+    vision_mode=vision_mode,
+    terrain_mode=args.terrain,
+    reward_mode=args.reward_mode,
 )
 
-mode_name = "Blind" if args.blind else "Visual (4 Cameras)"
+mode_name = vision_mode.capitalize()
 sync_name = "Sync" if args.sync else "Async"
 print("=" * 80)
 print(f"STARTING TORCHRL SAC TRAINING: {args.total_timesteps:,} steps")
-print(f"Device: {args.device.upper()} | Workers: {args.workers} ({sync_name}) | Mode: {mode_name}")
+print(f"Device: {args.device.upper()} | Workers: {args.workers} ({sync_name}) | Control: {args.control_mode} | Mode: {mode_name}")
 print(f"Scratch Dir: {args.scratch_dir} | Replay Capacity: {args.buffer_size:,}")
 print("=" * 80)
 
@@ -354,7 +394,7 @@ try:
                             optimizers=optimizers,
                             step=total_collected,
                             best_mean_reward=best_mean_reward,
-                            blind=args.blind,
+                            blind=blind,
                         )
 
         # Perform gradient updates once buffer reaches sufficient size
@@ -432,7 +472,7 @@ try:
                 optimizers=optimizers,
                 step=total_collected,
                 best_mean_reward=best_mean_reward,
-                blind=args.blind,
+                blind=blind,
             )
 
             # Save best checkpoint if rolling mean reward improved
@@ -450,7 +490,7 @@ try:
                         optimizers=optimizers,
                         step=total_collected,
                         best_mean_reward=best_mean_reward,
-                        blind=args.blind,
+                        blind=blind,
                     )
                     print(f"*** New best model saved ({best_mean_reward:.2f}) -> {best_ckpt} ***")
 
@@ -469,7 +509,7 @@ save_checkpoint(
     optimizers=optimizers,
     step=total_collected,
     best_mean_reward=best_mean_reward,
-    blind=args.blind,
+    blind=blind,
 )
 print(f"Training finished. Final checkpoint saved -> {final_ckpt}")
 

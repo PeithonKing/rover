@@ -1,16 +1,31 @@
 """
 scene_builder.py
 ================
-Run once after each FreeCAD export to compile the raw assembly.xml
-into a physics-ready scene.xml. Does NOT modify FreeCAD source files.
+Processes FreeCAD export (assembly.xml) and cameras (cameras.xml) into a
+pristine, physics-ready robot model (rover_only.xml).
+
+Strips all world-specific elements:
+- Compiler meshdir attribute (delegated to parent world XML)
+- World textures (skybox, groundplane)
+- Groundplane material
+- World lights (overhead and fill lights)
+- Floor and groundplane geoms
+- Target marker site (delegated to parent world XML)
+
+The resulting rover_only.xml contains strictly:
+- Chassis body, freejoint root, rocker-bogie kinematics, wheels, cameras
+- Mass calculations derived from OBJ surface areas (2mm aluminum shell)
+- Actuators: 6 velocity drives and 4 position steering servos
+- Sensors: IMU (framequat, frameangvel) and 4 passive suspension joint sensors
+- Differential equality constraints
 
 Usage:
-python scene_builder.py
+    python scene_builder.py
+    (or with uv: uv run python scene_builder.py)
 """
 
 import xml.etree.ElementTree as ET
 import numpy as np
-import struct
 import os
 
 # ---------------------------------------------------------------------------
@@ -19,16 +34,16 @@ import os
 ASSEMBLY_XML = "3D_files/mujoco/assembly.xml"
 CAMERAS_XML = "3D_files/mujoco/cameras.xml"
 MESHES_DIR = "3D_files/mujoco/meshes"
-OUTPUT_XML = "3D_files/mujoco/scene.xml"
+OUTPUT_XML = "3D_files/mujoco/rover_only.xml"
 
 # ---------------------------------------------------------------------------
 # Physics constants
 # ---------------------------------------------------------------------------
-MAX_WHEEL_VEL = 29.24  # rad/s  ← 10 km/h with 190mm diameter wheels
-MAX_STEER_ANG = 0.7854  # rad    ← ±45 degrees
+MAX_WHEEL_VEL = 29.24  # rad/s  <- 10 km/h with 190mm diameter wheels
+MAX_STEER_ANG = 0.7854  # rad    <- +/-45 degrees
 WHEEL_MASS_KG = 0.3  # per wheel (rubber + hub estimate)
 CHASSIS_AREA_KG_PER_M2 = (
-    5.4  # 2mm aluminum hollow shell: 2.7 g/cm³ × 0.2cm = 0.54 g/cm² = 5.4 kg/m²
+    5.4  # 2mm aluminum hollow shell: 2.7 g/cm^3 x 0.2cm = 0.54 g/cm^2 = 5.4 kg/m^2
 )
 
 # Joints we monitor as passive sensors (4 rocker-bogie angles)
@@ -45,7 +60,7 @@ PASSIVE_SENSOR_JOINTS = [
 # ---------------------------------------------------------------------------
 def obj_surface_area(filepath: str) -> float:
     """
-    Parses a .obj file and returns the total surface area in m².
+    Parses a .obj file and returns the total surface area in m^2.
     Assumes the .obj is exported in millimetres (FreeCAD default) and converts.
     """
     verts = []
@@ -56,7 +71,7 @@ def obj_surface_area(filepath: str) -> float:
                 _, x, y, z = line.split()
                 verts.append(
                     np.array([float(x), float(y), float(z)]) / 1000.0
-                )  # mm → m
+                )  # mm -> m
             elif line.startswith("f "):
                 idx = [int(p.split("/")[0]) - 1 for p in line.split()[1:]]
                 for i in range(1, len(idx) - 1):
@@ -68,7 +83,7 @@ def obj_surface_area(filepath: str) -> float:
 
 
 # ---------------------------------------------------------------------------
-# Build the final scene
+# Build the robot model (rover_only.xml)
 # ---------------------------------------------------------------------------
 print("=== scene_builder.py ===")
 
@@ -81,9 +96,40 @@ cam_tree = ET.parse(CAMERAS_XML)
 cam_root = cam_tree.getroot()
 
 # -----------------------------------------------------------------------
-# 3. Fix collisions: remove contype="0" conaffinity="0" from ALL mesh geoms
+# 3. Strip compiler meshdir attribute so root world XML controls mesh paths
+# -----------------------------------------------------------------------
+compiler = root.find("compiler")
+if compiler is not None and "meshdir" in compiler.attrib:
+    del compiler.attrib["meshdir"]
+    print("  [OK] Stripped meshdir from compiler tag.")
+
+# -----------------------------------------------------------------------
+# 4. Strip world textures and groundplane material from asset block
+# -----------------------------------------------------------------------
+asset = root.find("asset")
+if asset is not None:
+    for child in list(asset):
+        if child.tag == "texture":
+            asset.remove(child)
+        elif child.tag == "material" and child.get("name") == "groundplane":
+            asset.remove(child)
+    print("  [OK] Stripped textures and groundplane material from assets.")
+
+# -----------------------------------------------------------------------
+# 5. Strip world lights and floor geoms from worldbody
+# -----------------------------------------------------------------------
+worldbody = root.find("worldbody")
+if worldbody is not None:
+    for child in list(worldbody):
+        if child.tag == "light":
+            worldbody.remove(child)
+        elif child.tag == "geom" and ("floor" in child.get("name", "") or "groundplane" in child.get("name", "")):
+            worldbody.remove(child)
+    print("  [OK] Stripped lights and floor geoms from worldbody.")
+
+# -----------------------------------------------------------------------
+# 6. Fix collisions: remove contype="0" conaffinity="0" from ALL mesh geoms
 #    so wheels / chassis can contact the terrain.
-#    We'll re-add them selectively for visual-only geoms we inject later.
 # -----------------------------------------------------------------------
 for geom in root.iter("geom"):
     name = geom.get("name", "")
@@ -91,10 +137,10 @@ for geom in root.iter("geom"):
         continue
     geom.attrib.pop("contype", None)
     geom.attrib.pop("conaffinity", None)
-print("  [✓] Collisions enabled on all mesh geoms.")
+print("  [OK] Collisions enabled on all mesh geoms.")
 
 # -----------------------------------------------------------------------
-# 4. Mass calculation for each part from OBJ surface area
+# 7. Mass calculation for each part from OBJ surface area
 # -----------------------------------------------------------------------
 asset = root.find("asset")
 for mesh_tag in asset.findall("mesh"):
@@ -121,10 +167,10 @@ for mesh_tag in asset.findall("mesh"):
                 geom.set("friction", "2.0 0.005 0.0001")  # Stop Tokyo drifts!
                 break
 
-print("  [✓] Mass assigned from OBJ surface areas (2mm Al shell).")
+print("  [OK] Mass assigned from OBJ surface areas (2mm Al shell).")
 
 # -----------------------------------------------------------------------
-# 5. Rebuild actuator block
+# 8. Rebuild actuator block
 # -----------------------------------------------------------------------
 drv_joints = []
 srv_joints = []
@@ -173,12 +219,12 @@ for jname in srv_joints:
     )
 
 print(
-    f"  [✓] Motors rebuilt: {len(drv_joints)} drive, {len(srv_joints)} steering, "
+    f"  [OK] Motors rebuilt: {len(drv_joints)} drive, {len(srv_joints)} steering, "
     f"{len(pass_joints)} passive (no actuator)."
 )
 
 # -----------------------------------------------------------------------
-# 6. Add joint damping AND STIFFNESS to all passive suspension joints 
+# 9. Add joint damping AND STIFFNESS to all passive suspension joints 
 #    so they don't fold up and lift the middle wheel.
 # -----------------------------------------------------------------------
 for joint in root.iter("joint"):
@@ -193,10 +239,10 @@ for joint in root.iter("joint"):
     elif name.startswith("srv_"):
         joint.set("damping", "2.0")
         joint.set("armature", "0.01")
-print("  [✓] Joint damping tuned.")
+print("  [OK] Joint damping tuned.")
 
 # -----------------------------------------------------------------------
-# 7. Sensors: IMU on chassis + jointpos for the 4 passive suspension arms
+# 10. Sensors: IMU on chassis + jointpos for the 4 passive suspension arms
 # -----------------------------------------------------------------------
 sensor = root.find("sensor")
 if sensor is None:
@@ -216,10 +262,10 @@ ET.SubElement(
 for jname in PASSIVE_SENSOR_JOINTS:
     ET.SubElement(sensor, "jointpos", {"name": f"sensor_{jname}", "joint": jname})
 
-print(f"  [✓] Sensors: IMU (quat + angvel) + {len(PASSIVE_SENSOR_JOINTS)} jointpos.")
+print(f"  [OK] Sensors: IMU (quat + angvel) + {len(PASSIVE_SENSOR_JOINTS)} jointpos.")
 
 # -----------------------------------------------------------------------
-# 8. Inject cameras + freejoint into the chassis body, and add Target Marker
+# 11. Inject cameras + freejoint into the chassis body
 # -----------------------------------------------------------------------
 chassis = root.find(".//body[@name='body']")
 if chassis is not None:
@@ -229,27 +275,17 @@ if chassis is not None:
     for cam in cam_root.findall("camera"):
         chassis.append(cam)
     print(
-        f"  [✓] Injected freejoint + {len(cam_root.findall('camera'))} cameras into chassis body."
+        f"  [OK] Injected freejoint + {len(cam_root.findall('camera'))} cameras into chassis body."
     )
 else:
     print("  [!] WARNING: Could not find body named 'body'. Cameras NOT injected.")
 
-# Add target marker to worldbody (Yellow Sphere)
-worldbody = root.find("worldbody")
-if worldbody is not None:
-    ET.SubElement(worldbody, "site", {
-        "name": "target_marker",
-        "type": "sphere",
-        "size": "0.5",
-        "pos": "0 0 0.299",  # Floor is at Z=-0.201. Center = 0.5 - 0.201 = 0.299
-        "rgba": "1 1 0 0.5"  # Yellow, semi-transparent
-    })
-    print("  [✓] Injected yellow target marker sphere.")
+# Note: target_marker site is omitted here; it is defined in world XML files.
 
 # -----------------------------------------------------------------------
-# 9. Write scene.xml
+# 12. Write rover_only.xml
 # -----------------------------------------------------------------------
 ET.indent(root, space="  ")
 tree.write(OUTPUT_XML, encoding="unicode", xml_declaration=True)
-print(f"  [✓] Written to {OUTPUT_XML}")
+print(f"  [OK] Written to {OUTPUT_XML}")
 print("=== Done! ===")

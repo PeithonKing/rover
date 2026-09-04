@@ -1,0 +1,185 @@
+<?xml version='1.0' encoding='utf-8'?>
+<mujoco>
+  <option integrator="implicitfast" timestep="0.002" solver="Newton" iterations="200" tolerance="1e-10" />
+  <compiler autolimits="true" inertiafromgeom="true" angle="radian" />
+  <default>
+    <joint damping="10.0" armature="1.0" />
+    <geom condim="3" friction="1 0.5 0.5" margin="0" />
+  </default>
+  <asset>
+    <mesh name="body" file="body.obj" scale="0.001 0.001 0.001" />
+    <material name="body" rgba="0.4470588266849518 0.4745098054409027 0.501960813999176 1.0" shininess="0.8999999761581421" />
+    <mesh name="rocker_right_leg" file="rocker_right_leg.obj" scale="0.001 0.001 0.001" />
+    <material name="rocker_right_leg" rgba="0.4470588266849518 0.4745098054409027 0.501960813999176 1.0" shininess="0.8999999761581421" />
+    <mesh name="rocker_left_leg" file="rocker_left_leg.obj" scale="0.001 0.001 0.001" />
+    <material name="rocker_left_leg" rgba="0.4470588266849518 0.4745098054409027 0.501960813999176 1.0" shininess="0.8999999761581421" />
+    <mesh name="conn1_right" file="conn1_right.obj" scale="0.001 0.001 0.001" />
+    <material name="conn1_right" rgba="0.4470588266849518 0.4745098054409027 0.501960813999176 1.0" shininess="0.8999999761581421" />
+    <mesh name="conn1_left" file="conn1_left.obj" scale="0.001 0.001 0.001" />
+    <material name="conn1_left" rgba="0.4470588266849518 0.4745098054409027 0.501960813999176 1.0" shininess="0.8999999761581421" />
+    <mesh name="conn2_right" file="conn2_right.obj" scale="0.001 0.001 0.001" />
+    <material name="conn2_right" rgba="0.4470588266849518 0.4745098054409027 0.501960813999176 1.0" shininess="0.8999999761581421" />
+    <mesh name="conn2_left" file="conn2_left.obj" scale="0.001 0.001 0.001" />
+    <material name="conn2_left" rgba="0.4470588266849518 0.4745098054409027 0.501960813999176 1.0" shininess="0.8999999761581421" />
+    <mesh name="diff_beam" file="diff_beam.obj" scale="0.001 0.001 0.001" />
+    <material name="diff_beam" rgba="0.4470588266849518 0.4745098054409027 0.501960813999176 1.0" shininess="0.8999999761581421" />
+    <mesh name="bogie_right_leg" file="bogie_right_leg.obj" scale="0.001 0.001 0.001" />
+    <material name="bogie_right_leg" rgba="0.4470588266849518 0.4745098054409027 0.501960813999176 1.0" shininess="0.8999999761581421" />
+    <mesh name="bogie_left_leg" file="bogie_left_leg.obj" scale="0.001 0.001 0.001" />
+    <material name="bogie_left_leg" rgba="0.4470588266849518 0.4745098054409027 0.501960813999176 1.0" shininess="0.8999999761581421" />
+    <mesh name="wheel_rotator_right_back" file="wheel_rotator_right_back.obj" scale="0.001 0.001 0.001" />
+    <material name="wheel_rotator_right_back" rgba="0.4470588266849518 0.4745098054409027 0.501960813999176 1.0" shininess="0.8999999761581421" />
+    <mesh name="wheel_rotator_right_front" file="wheel_rotator_right_front.obj" scale="0.001 0.001 0.001" />
+    <material name="wheel_rotator_right_front" rgba="0.4470588266849518 0.4745098054409027 0.501960813999176 1.0" shininess="0.8999999761581421" />
+    <mesh name="wheel_rotator_left_front" file="wheel_rotator_left_front.obj" scale="0.001 0.001 0.001" />
+    <material name="wheel_rotator_left_front" rgba="0.4470588266849518 0.4745098054409027 0.501960813999176 1.0" shininess="0.8999999761581421" />
+    <mesh name="wheel_rotator_left_back" file="wheel_rotator_left_back.obj" scale="0.001 0.001 0.001" />
+    <material name="wheel_rotator_left_back" rgba="0.4470588266849518 0.4745098054409027 0.501960813999176 1.0" shininess="0.8999999761581421" />
+    <mesh name="wheel_right_back" file="wheel_right_back.obj" scale="0.001 0.001 0.001" />
+    <material name="wheel_right_back" rgba="0.4470588266849518 0.4745098054409027 0.501960813999176 1.0" shininess="0.8999999761581421" />
+    <mesh name="wheel_right_middle" file="wheel_right_middle.obj" scale="0.001 0.001 0.001" />
+    <material name="wheel_right_middle" rgba="0.4470588266849518 0.4745098054409027 0.501960813999176 1.0" shininess="0.8999999761581421" />
+    <mesh name="wheel_right_front" file="wheel_right_front.obj" scale="0.001 0.001 0.001" />
+    <material name="wheel_right_front" rgba="0.4470588266849518 0.4745098054409027 0.501960813999176 1.0" shininess="0.8999999761581421" />
+    <mesh name="wheel_left_back" file="wheel_left_back.obj" scale="0.001 0.001 0.001" />
+    <material name="wheel_left_back" rgba="0.4470588266849518 0.4745098054409027 0.501960813999176 1.0" shininess="0.8999999761581421" />
+    <mesh name="wheel_left_middle" file="wheel_left_middle.obj" scale="0.001 0.001 0.001" />
+    <material name="wheel_left_middle" rgba="0.4470588266849518 0.4745098054409027 0.501960813999176 1.0" shininess="0.8999999761581421" />
+    <mesh name="wheel_left_front" file="wheel_left_front.obj" scale="0.001 0.001 0.001" />
+    <material name="wheel_left_front" rgba="0.4470588266849518 0.4745098054409027 0.501960813999176 1.0" shininess="0.8999999761581421" />
+  </asset>
+  <worldbody>
+    <body name="body" pos="0 0 0.5" quat="1.0 0.0 0.0 0.0">
+      <freejoint name="root" />
+      <geom type="mesh" name="body geom" mesh="body" material="body" mass="2.151784" />
+      <site name="body site" pos="-0.0 0.0 -0.0" quat="0.0 0.0 0.0 1.0" rgba="0 0 0 0" />
+      <body name="rocker_right_leg" pos="0 0 0" quat="1.0 0.0 0.0 0.0">
+        <geom type="mesh" name="rocker_right_leg geom" mesh="rocker_right_leg" material="rocker_right_leg" mass="0.375779" />
+        <site name="rocker_right_leg site" pos="7.726197315371666e-17 -1.8282806515611008e-16 -2.2132292553525e-16" quat="-7.155745187450983e-16 -3.863098657685826e-16 0.0 1.0" rgba="0 0 0 0" />
+        <joint type="hinge" name="pass_left_rocker" pos="0.0 -0.18999999999999997 0.10000000000000002" axis="0.0 -1.0 2.220446049250313e-16" damping="20.0" stiffness="100.0" armature="0.01" />
+        <body name="conn1_right" pos="0 0 0" quat="1.0 0.0 0.0 0.0">
+          <geom type="mesh" name="conn1_right geom" mesh="conn1_right" material="conn1_right" mass="0.072520" />
+          <site name="conn1_right site" pos="-9.226482981561053e-17 -1.4302806544378742e-16 -2.3903376955837814e-16" quat="-7.155745190051726e-16 -3.8630986576858223e-16 4.780789697963833e-16 1.0" rgba="0 0 0 0" />
+          <joint type="hinge" name="pass_right_conn1" pos="-9.812270590521906e-18 -0.17729999999999996 0.11269999999999997" axis="-7.726197315371652e-16 1.4311490374901966e-15 1.0" damping="20.0" stiffness="100.0" armature="0.01" />
+        </body>
+        <body name="bogie_right_leg" pos="0 0 0" quat="1.0 0.0 0.0 0.0">
+          <geom type="mesh" name="bogie_right_leg geom" mesh="bogie_right_leg" material="bogie_right_leg" mass="0.318301" />
+          <site name="bogie_right_leg site" pos="8.637042776708681e-17 -1.893198882999263e-16 -2.1092621801186793e-16" quat="-9.376191236701296e-16 0.0 0.0 1.0" rgba="0 0 0 0" />
+          <joint type="hinge" name="pass_right_rockerbogie" pos="0.13592266222324292 -0.1646000000000002 -0.018483174465507405" axis="8.659560562355051e-17 1.0 -2.2759572004815705e-15" damping="20.0" stiffness="100.0" armature="0.01" />
+          <body name="wheel_rotator_right_front" pos="0 0 0" quat="1.0 0.0 0.0 0.0">
+            <geom type="mesh" name="wheel_rotator_right_front geom" mesh="wheel_rotator_right_front" material="wheel_rotator_right_front" mass="0.045814" friction="2.0 0.005 0.0001" />
+            <site name="wheel_rotator_right_front site" pos="0.6237453244466125 5.942060182143583e-17 -8.224522844369804e-18" quat="-9.376191236701296e-16 0.0 0.0 1.0" rgba="0 0 0 0" />
+            <joint type="hinge" name="srv_right_front_rotator" pos="0.3364453244466123 -0.17730000000000032 -0.11269999999999977" axis="0.0 -1.9977029272549944e-15 -1.0" damping="2.0" armature="0.01" />
+            <body name="wheel_right_front" pos="0 0 0" quat="1.0 0.0 0.0 0.0">
+              <geom type="mesh" name="wheel_right_front geom" mesh="wheel_right_front" material="wheel_right_front" mass="0.2" friction="2.0 0.005 0.0001" />
+              <site name="wheel_right_front site" pos="0.6237453244466122 -1.578385867140966e-17 4.429780223822254e-16" quat="-8.265968212076141e-16 -7.707523721847567e-16 0.0 1.0" rgba="0 0 0 0" />
+              <joint type="hinge" name="drv_right_front_wheel" pos="0.33644532444661235 -0.2700000000000002 -0.09999999999999949" axis="-1.9721522630525295e-30 -1.0 2.0539125955565396e-15" damping="0.5" armature="0.01" />
+            </body>
+          </body>
+          <body name="wheel_right_middle" pos="0 0 0" quat="1.0 0.0 0.0 0.0">
+            <geom type="mesh" name="wheel_right_middle geom" mesh="wheel_right_middle" material="wheel_right_middle" mass="0.2" friction="2.0 0.005 0.0001" />
+            <site name="wheel_right_middle site" pos="0.3417058366887592 -1.30819888248244e-16 -8.842031402607514e-15" quat="-9.376191236701296e-16 0.0 0.0 1.0" rgba="0 0 0 0" />
+            <joint type="hinge" name="drv_right_middle_wheel" pos="0.05440583668875911 -0.2700000000000003 -0.10000000000000825" axis="0.0 -1.0 2.3869795029440866e-15" damping="0.5" armature="0.01" />
+          </body>
+        </body>
+        <body name="wheel_rotator_right_back" pos="0 0 0" quat="1.0 0.0 0.0 0.0">
+          <geom type="mesh" name="wheel_rotator_right_back geom" mesh="wheel_rotator_right_back" material="wheel_rotator_right_back" mass="0.045814" friction="2.0 0.005 0.0001" />
+          <site name="wheel_rotator_right_back site" pos="6.491004093495458e-17 -1.6010790976654713e-16 -2.240337285453354e-16" quat="-7.155745187450983e-16 -3.8630986576858253e-16 0.0 1.0" rgba="0 0 0 0" />
+          <joint type="hinge" name="srv_right_back_rotator" pos="-0.28729999999999994 -0.1773000000000005 -0.11270000000000027" axis="7.726197315371652e-16 -1.553613717404932e-15 -1.0" damping="2.0" armature="0.01" />
+          <body name="wheel_right_back" pos="0 0 0" quat="1.0 0.0 0.0 0.0">
+            <geom type="mesh" name="wheel_right_back geom" mesh="wheel_right_back" material="wheel_right_back" mass="0.2" friction="2.0 0.005 0.0001" />
+            <site name="wheel_right_back site" pos="1.4116684246030877e-16 -6.476895136190875e-17 -3.3842836082051287e-16" quat="-6.045522162825826e-16 0.0 0.0 1.0" rgba="0 0 0 0" />
+            <joint type="hinge" name="drv_right_back_wheel" pos="-0.2872999999999999 -0.27000000000000024 -0.09999999999999992" axis="0.0 -1.0 1.7763568394002505e-15" damping="0.5" armature="0.01" />
+          </body>
+        </body>
+      </body>
+      <body name="rocker_left_leg" pos="0 0 0" quat="1.0 0.0 0.0 0.0">
+        <geom type="mesh" name="rocker_left_leg geom" mesh="rocker_left_leg" material="rocker_left_leg" mass="0.375779" />
+        <site name="rocker_left_leg site" pos="1.9167241245858794e-17 7.000026476456348e-17 -7.356960720283828e-19" quat="0.0 0.0 0.0 1.0" rgba="0 0 0 0" />
+        <joint type="hinge" name="pass_right_rocker" pos="0.0 0.19000000000000003 0.09999999999999992" axis="0.0 -1.0 2.220446049250313e-16" damping="20.0" stiffness="100.0" armature="0.01" />
+        <body name="conn1_left" pos="0 0 0" quat="1.0 0.0 0.0 0.0">
+          <geom type="mesh" name="conn1_left geom" mesh="conn1_left" material="conn1_left" mass="0.072520" />
+          <site name="conn1_left site" pos="-7.377352525219327e-18 4.500267813573931e-18 -1.503569606906507e-17" quat="0.0 0.0 0.0 1.0" rgba="0 0 0 0" />
+          <joint type="hinge" name="pass_left_conn1" pos="1.9167241245858794e-17 0.1773 0.11269999999999993" axis="0.0 -1.2246467991473532e-16 -1.0" damping="20.0" stiffness="100.0" armature="0.01" />
+        </body>
+        <body name="bogie_left_leg" pos="0 0 0" quat="1.0 0.0 0.0 0.0">
+          <geom type="mesh" name="bogie_left_leg geom" mesh="bogie_left_leg" material="bogie_left_leg" mass="0.318301" />
+          <site name="bogie_left_leg site" pos="-1.7601049802723487e-17 9.310434355070712e-17 -4.545467724370338e-17" quat="0.0 -3.790201999626894e-16 0.0 1.0" rgba="0 0 0 0" />
+          <joint type="hinge" name="pass_left_rockerbogie" pos="0.1359226622232428 0.16460000000000002 -0.018483174465507467" axis="8.659560562354901e-17 1.0 4.440892098500626e-16" damping="20.0" stiffness="100.0" armature="0.01" />
+          <body name="wheel_rotator_left_front" pos="0 0 0" quat="1.0 0.0 0.0 0.0">
+            <geom type="mesh" name="wheel_rotator_left_front geom" mesh="wheel_rotator_left_front" material="wheel_rotator_left_front" mass="0.045814" friction="2.0 0.005 0.0001" />
+            <site name="wheel_rotator_left_front site" pos="0.04914532444661175 1.52910236319365e-17 9.561646911610838e-17" quat="-3.7902019996268945e-16 2.8292768660732965e-16 1.0 2.9086327691241854e-16" rgba="0 0 0 0" />
+            <joint type="hinge" name="srv_left_front_rotator" pos="0.3364453244466122 0.17729999999999996 -0.11269999999999987" axis="7.580403999253788e-16 -4.4339069329992415e-16 -1.0" damping="2.0" armature="0.01" />
+            <body name="wheel_left_front" pos="0 0 0" quat="1.0 0.0 0.0 0.0">
+              <geom type="mesh" name="wheel_left_front geom" mesh="wheel_left_front" material="wheel_left_front" mass="0.2" friction="2.0 0.005 0.0001" />
+              <site name="wheel_left_front site" pos="0.04914532444661195 0.4679999999999998 -0.19999999999999976" quat="2.908632769124185e-16 1.0 -5.604834427636185e-16 -3.4825327770850875e-16" rgba="0 0 0 0" />
+              <joint type="hinge" name="drv_left_front_wheel" pos="0.33644532444661207 0.2699999999999998 -0.09999999999999977" axis="-5.817265538248371e-16 -1.0 4.440892098500626e-16" damping="0.5" armature="0.01" />
+            </body>
+          </body>
+          <body name="wheel_left_middle" pos="0 0 0" quat="1.0 0.0 0.0 0.0">
+            <geom type="mesh" name="wheel_left_middle geom" mesh="wheel_left_middle" material="wheel_left_middle" mass="0.2" friction="2.0 0.005 0.0001" />
+            <site name="wheel_left_middle site" pos="0.3417058366887589 0.4679999999999999 -8.640111535189077e-15" quat="0.0 0.0 0.0 1.0" rgba="0 0 0 0" />
+            <joint type="hinge" name="drv_left_middle_wheel" pos="0.05440583668875899 0.26999999999999996 -0.10000000000000858" axis="0.0 -1.0 2.220446049250313e-16" damping="0.5" armature="0.01" />
+          </body>
+        </body>
+        <body name="wheel_rotator_left_back" pos="0 0 0" quat="1.0 0.0 0.0 0.0">
+          <geom type="mesh" name="wheel_rotator_left_back geom" mesh="wheel_rotator_left_back" material="wheel_rotator_left_back" mass="0.045814" friction="2.0 0.005 0.0001" />
+          <site name="wheel_rotator_left_back site" pos="-0.5746000000000004 1.3341425573199623e-17 1.8606340159442142e-17" quat="0.0 0.0 1.0 2.369757418392935e-16" rgba="0 0 0 0" />
+          <joint type="hinge" name="srv_left_back_rotator" pos="-0.2873 0.17730000000000018 -0.11270000000000013" axis="5.804231674381205e-32 1.2246467991473532e-16 -1.0" damping="2.0" armature="0.01" />
+          <body name="wheel_left_back" pos="0 0 0" quat="1.0 0.0 0.0 0.0">
+            <geom type="mesh" name="wheel_left_back geom" mesh="wheel_left_back" material="wheel_left_back" mass="0.2" friction="2.0 0.005 0.0001" />
+            <site name="wheel_left_back site" pos="-0.5746 0.4680000000000003 -0.19999999999999976" quat="2.3697574183929353e-16 1.0 0.0 -4.782261221546544e-16" rgba="0 0 0 0" />
+            <joint type="hinge" name="drv_left_back_wheel" pos="-0.2873 0.27000000000000013 -0.10000000000000006" axis="-4.739514836785873e-16 -1.0 -2.220446049250313e-16" damping="0.5" armature="0.01" />
+          </body>
+        </body>
+      </body>
+      <body name="diff_beam" pos="0 0 0" quat="1.0 0.0 0.0 0.0">
+        <geom type="mesh" name="diff_beam geom" mesh="diff_beam" material="diff_beam" mass="0.209382" />
+        <site name="diff_beam site" pos="9.137825860051809e-17 -1.0376656977338119e-16 -1.3876986865598834e-18" quat="0.0 0.0 0.0 1.0" rgba="0 0 0 0" />
+        <joint type="hinge" name="pass_diff" pos="-0.18650000000000003 -6.318299999999999e-14 0.2" axis="0.0 0.0 1.0" damping="20.0" stiffness="100.0" armature="0.01" />
+        <body name="conn2_right" pos="0 0 0" quat="1.0 0.0 0.0 0.0">
+          <geom type="mesh" name="conn2_right geom" mesh="conn2_right" material="conn2_right" mass="0.115832" />
+          <site name="conn2_right site" pos="-1.8633723069938156e-16 -7.67280654437869e-17 -2.962337695583786e-16" quat="-7.155745190051728e-16 0.0 4.780789697963833e-16 1.0" rgba="0 0 0 0" />
+          <joint type="hinge" name="pass_right_diff_conn2" pos="-0.18649999999999997 -0.17729999999999996 0.20000000000000007" axis="-4.725604379196148e-31 -2.2134608837489314e-16 -1.0" damping="20.0" stiffness="100.0" armature="0.01" />
+        </body>
+        <body name="conn2_left" pos="0 0 0" quat="1.0 0.0 0.0 0.0">
+          <geom type="mesh" name="conn2_left geom" mesh="conn2_left" material="conn2_left" mass="0.115832" />
+          <site name="conn2_left site" pos="2.2217740999645282e-17 -1.0729973917181688e-16 -5.885740549946897e-17" quat="0.0 0.0 0.0 1.0" rgba="0 0 0 0" />
+          <joint type="hinge" name="pass_left_diff_conn2" pos="-0.18649999999999997 0.17729999999999987 0.2" axis="0.0 0.0 1.0" damping="20.0" stiffness="100.0" armature="0.01" />
+        </body>
+      </body>
+      <camera name="cam_front_left" pos="0.25 0.15 0.2" xyaxes="0 -1 0 0 0 1" fovy="60" />
+      <camera name="cam_side_left" pos="0.25 0.15 0.2" xyaxes="1 0 0 0 0 1" fovy="60" />
+      <camera name="cam_front_right" pos="0.25 -0.15 0.2" xyaxes="0 -1 0 0 0 1" fovy="60" />
+      <camera name="cam_side_right" pos="0.25 -0.15 0.2" xyaxes="-1 0 0 0 0 1" fovy="60" />
+    </body>
+  </worldbody>
+  <contact />
+  <equality>
+    <connect body1="conn1_right" body2="conn2_right" name="connect_hinge_pass_right_conns_1" anchor="-7.69174498565964e-17 -0.16459999999999975 0.21270000000000003" />
+    <connect body1="conn1_right" body2="conn2_right" name="connect_hinge_pass_right_conns_2" anchor="-8.561307319628856e-17 -0.15459999999999974 0.2127" />
+    <connect body1="conn1_left" body2="conn2_left" name="connect_hinge_pass_left_conns_1" anchor="1.5022647474780674e-17 0.16459999999999989 0.21270000000000003" />
+    <connect body1="conn1_left" body2="conn2_left" name="connect_hinge_pass_left_conns_2" anchor="1.5888603531016166e-17 0.1745999999999999 0.21270000000000003" />
+  </equality>
+  <tendon />
+  <actuator>
+    <velocity name="drv_right_front_wheel" joint="drv_right_front_wheel" kv="5" forcelimited="true" forcerange="-10 10" gear="-1" />
+    <velocity name="drv_right_middle_wheel" joint="drv_right_middle_wheel" kv="5" forcelimited="true" forcerange="-10 10" gear="-1" />
+    <velocity name="drv_right_back_wheel" joint="drv_right_back_wheel" kv="5" forcelimited="true" forcerange="-10 10" gear="-1" />
+    <velocity name="drv_left_front_wheel" joint="drv_left_front_wheel" kv="5" forcelimited="true" forcerange="-10 10" gear="-1" />
+    <velocity name="drv_left_middle_wheel" joint="drv_left_middle_wheel" kv="5" forcelimited="true" forcerange="-10 10" gear="-1" />
+    <velocity name="drv_left_back_wheel" joint="drv_left_back_wheel" kv="5" forcelimited="true" forcerange="-10 10" gear="-1" />
+    <position name="srv_right_front_rotator" joint="srv_right_front_rotator" kp="500" gear="-0.7854" />
+    <position name="srv_right_back_rotator" joint="srv_right_back_rotator" kp="500" gear="-0.7854" />
+    <position name="srv_left_front_rotator" joint="srv_left_front_rotator" kp="500" gear="-0.7854" />
+    <position name="srv_left_back_rotator" joint="srv_left_back_rotator" kp="500" gear="-0.7854" />
+  </actuator>
+  <sensor>
+    <framequat name="imu_quat" objtype="body" objname="body" />
+    <frameangvel name="imu_angvel" objtype="body" objname="body" />
+    <jointpos name="sensor_pass_left_rocker" joint="pass_left_rocker" />
+    <jointpos name="sensor_pass_right_rocker" joint="pass_right_rocker" />
+    <jointpos name="sensor_pass_left_rockerbogie" joint="pass_left_rockerbogie" />
+    <jointpos name="sensor_pass_right_rockerbogie" joint="pass_right_rockerbogie" />
+  </sensor>
+</mujoco>

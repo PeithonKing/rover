@@ -1,0 +1,141 @@
+<!-- ======================================================================= -->
+<!-- WORLD_FLAT.XML: Flat terrain environment for 6-wheel rover simulation.  -->
+<!--                                                                         -->
+<!-- Modular World Definition Architecture (Milestone 1 / R1)                 -->
+<!-- Defines:                                                                -->
+<!--   1. Compiler relative asset directories and compilation flags          -->
+<!--   2. Simulation physics engine parameters (2ms implicitfast integrator) -->
+<!--   3. Default joint damping and contact surface friction properties      -->
+<!--   4. Skybox atmospheric background and groundplane checker materials    -->
+<!--   5. Key and fill illumination sources                                  -->
+<!--   6. Infinite flat horizontal ground plane                              -->
+<!--   7. Visual waypoint navigation target marker site                      -->
+<!--   8. Robot model inclusion (rover_only.xml)                             -->
+<!--                                                                         -->
+<!-- Coordinate System: Z-up, right-handed Cartesian (distances in meters).   -->
+<!-- Encoding: Strict 7-bit ASCII only (no unicode characters).              -->
+<!-- ======================================================================= -->
+<mujoco model="rover_world_flat">
+
+  <!-- ===================================================================== -->
+  <!-- 1. COMPILER CONFIGURATION                                             -->
+  <!-- ===================================================================== -->
+  <!-- meshdir: Directory where OBJ mesh geometry files reside. Evaluated    -->
+  <!-- relative to this XML file location:                                   -->
+  <!-- assets/worlds/ -> ../../3D_files/mujoco/meshes                        -->
+  <!-- autolimits: Enforce joint limits automatically during simulation.     -->
+  <!-- inertiafromgeom: Derive missing inertia tensors from geom volumes.    -->
+  <!-- angle: All angles specified in radians (SI standard).                 -->
+  <compiler meshdir="../../3D_files/mujoco/meshes"
+            autolimits="true"
+            inertiafromgeom="true"
+            angle="radian"/>
+
+  <!-- ===================================================================== -->
+  <!-- 2. SIMULATION PHYSICS ENGINE OPTIONS                                  -->
+  <!-- ===================================================================== -->
+  <!-- integrator: implicitfast provides numerical stability for stiff       -->
+  <!-- passive joints, springs, and contact dynamics.                        -->
+  <!-- timestep: 0.002 seconds (2 ms / 500 Hz physics rate).                 -->
+  <!-- Environment control rate steps 10 physics ticks per action (50 Hz).   -->
+  <!-- solver: Newton solver for constraint optimization.                    -->
+  <!-- iterations: Maximum 200 solver iterations per timestep.               -->
+  <!-- tolerance: Strict numerical convergence threshold (1e-10).            -->
+  <option integrator="implicitfast"
+          timestep="0.002"
+          solver="Newton"
+          iterations="200"
+          tolerance="1e-10"/>
+
+  <!-- ===================================================================== -->
+  <!-- 3. DEFAULT KINEMATIC AND CONTACT DYNAMICS PROPERTIES                  -->
+  <!-- ===================================================================== -->
+  <!-- joint damping: Viscous damping resisting joint velocity (N*s/m).      -->
+  <!-- joint armature: Rotor inertia added to diagonal mass matrix (kg*m^2). -->
+  <!-- geom condim: 3D contact friction cone (normal force + 2 friction).    -->
+  <!-- geom friction: Sliding (1.0), torsional (0.5), rolling (0.5).         -->
+  <!-- geom margin: Contact detection threshold distance in meters.          -->
+  <default>
+    <joint damping="10.0" armature="1.0"/>
+    <geom condim="3" friction="1 0.5 0.5" margin="0"/>
+  </default>
+
+  <!-- ===================================================================== -->
+  <!-- 4. VISUAL ASSETS AND TEXTURES                                         -->
+  <!-- ===================================================================== -->
+  <asset>
+    <!-- Skybox: Vertical gradient transitioning from sky blue at horizon    -->
+    <!-- (0.3, 0.5, 0.7) to dark zenith (0, 0, 0).                             -->
+    <texture type="skybox"
+             builtin="gradient"
+             rgb1="0.3 0.5 0.7"
+             rgb2="0 0 0"
+             width="512"
+             height="3072"/>
+
+    <!-- Groundplane texture: 2D checkerboard pattern with light borders.      -->
+    <!-- Alternating slate blue/gray tiles for camera visual odometry contrast. -->
+    <texture type="2d"
+             name="groundplane"
+             builtin="checker"
+             mark="edge"
+             rgb1="0.2 0.3 0.4"
+             rgb2="0.1 0.2 0.3"
+             markrgb="0.8 0.8 0.8"
+             width="300"
+             height="300"/>
+
+    <!-- Groundplane material: References the checker texture.                 -->
+    <!-- texuniform: Uniform texture mapping across plane surface.             -->
+    <!-- texrepeat: Repeats texture pattern every 5x5 meters.                  -->
+    <!-- reflectance: 10 percent specular surface reflectance.                 -->
+    <material name="groundplane"
+              texture="groundplane"
+              texuniform="true"
+              texrepeat="5 5"
+              reflectance="0.1"/>
+  </asset>
+
+  <!-- ===================================================================== -->
+  <!-- 5. WORLDBODY: LIGHTING, TERRAIN FLOOR, AND TARGET MARKER SITE         -->
+  <!-- ===================================================================== -->
+  <worldbody>
+    <!-- Key light: Overhead primary illumination source at (0, 0, 4) meters.  -->
+    <!-- Direction vector points straight down (0, 0, -1).                     -->
+    <light diffuse=".8 .8 .8" pos="0 0 4" dir="0 0 -1"/>
+
+    <!-- Fill light: Secondary angled illumination at (4, 4, 4) meters.        -->
+    <!-- Direction vector points inward toward origin (-1, -1, -1).            -->
+    <!-- Fills shadows and creates visual contrast for onboard camera sensors. -->
+    <light diffuse=".6 .6 .6" pos="4 4 4" dir="-1 -1 -1"/>
+
+    <!-- Floor geom: Infinite horizontal plane representing flat ground.       -->
+    <!-- Located at Z = -0.201 meters matching rover chassis spawn elevation.  -->
+    <!-- Uses the checkerboard groundplane material for visual odometry.       -->
+    <geom name="floor"
+          pos="0 0 -0.201"
+          size="0 0 1"
+          type="plane"
+          material="groundplane"/>
+
+    <!-- Target marker site: Navigation goal indicator.                        -->
+    <!-- Sphere with radius 0.5m, centered at Z = 0.299m (resting on floor:    -->
+    <!-- -0.201 + 0.5 = 0.299m). Yellow semi-transparent appearance.          -->
+    <!-- Position is dynamically updated during training and evaluation runs.  -->
+    <!-- Site elements have zero collision volume and exert no contact forces. -->
+    <site name="target_marker"
+          type="sphere"
+          size="0.5"
+          pos="0 0 0.299"
+          rgba="1 1 0 0.5"/>
+  </worldbody>
+
+  <!-- ===================================================================== -->
+  <!-- 6. ROBOT MODEL INCLUSION                                              -->
+  <!-- ===================================================================== -->
+  <!-- Includes pristine rover robot model containing chassis bodies, joints, -->
+  <!-- passive suspension rockers/bogies, drive motors, steer servos, IMU,   -->
+  <!-- suspension encoder sensors, and onboard stereo RGB/depth cameras.     -->
+  <include file="../../3D_files/mujoco/rover_only.xml"/>
+
+</mujoco>

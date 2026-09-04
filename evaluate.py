@@ -31,6 +31,34 @@ parser.add_argument(
     "--max-steps", type=int, default=2000, help="Maximum steps per episode"
 )
 parser.add_argument(
+    "--control-mode",
+    type=str,
+    choices=["ackermann", "direct"],
+    default=None,
+    help="Control scheme ('ackermann' or 'direct'). Defaults to model checkpoint configuration.",
+)
+parser.add_argument(
+    "--vision-mode",
+    type=str,
+    choices=["blind", "depth", "depthmap", "rgb"],
+    default=None,
+    help="Visual perception mode ('blind', 'depth', 'depthmap', 'rgb')",
+)
+parser.add_argument(
+    "--terrain",
+    type=str,
+    choices=["flat"],
+    default="flat",
+    help="Terrain world environment ('flat')",
+)
+parser.add_argument(
+    "--reward-mode",
+    type=str,
+    choices=["standard", "energy"],
+    default="standard",
+    help="Reward objective formulation ('standard', 'energy')",
+)
+parser.add_argument(
     "--blind", dest="blind", action="store_true", default=None, help="Force blind policy mode (numeric sensors only)"
 )
 parser.add_argument(
@@ -89,28 +117,57 @@ elif isinstance(ckpt, dict):
 else:
     raise ValueError(f"Unrecognized checkpoint format in {model_path}")
 
-# Determine blind mode: user override > checkpoint metadata > tensor shape heuristics
-if args.blind is not None:
+# Determine model action dimension from checkpoint weights
+model_action_dim = 2
+for k, v in actor_sd.items():
+    if "trunk" in k and k.endswith(".weight") and v.dim() == 2:
+        model_action_dim = int(v.shape[0]) // 2
+
+# Resolve control_mode: CLI override > auto-detection from checkpoint
+if args.control_mode is not None:
+    control_mode = args.control_mode
+else:
+    control_mode = "direct" if model_action_dim == 10 else "ackermann"
+
+# Resolve vision_mode: CLI override > blind flag > checkpoint metadata > tensor shape heuristics
+if args.vision_mode is not None:
+    vision_mode = args.vision_mode
+    is_blind = (vision_mode == "blind")
+elif args.blind is not None:
     is_blind = args.blind
+    vision_mode = "blind" if is_blind else "rgb"
 elif ckpt_blind is not None:
     is_blind = bool(ckpt_blind)
+    vision_mode = "blind" if is_blind else "rgb"
 else:
     is_blind = not any("cnn" in k for k in actor_sd.keys())
+    vision_mode = "blind" if is_blind else "rgb"
 
-print(f"Policy configuration: Mode={'Blind' if is_blind else 'Visual (4 Cameras)'} | Deterministic={args.deterministic}")
+print(
+    f"Policy configuration: Control={control_mode} (Model dim: {model_action_dim}) | "
+    f"Mode={'Blind' if is_blind else vision_mode} | Deterministic={args.deterministic}"
+)
 
 # --- Load Actor Model ---
-actor = make_actor(blind=is_blind)
+actor = make_actor(blind=is_blind, action_dim=model_action_dim)
 actor.load_state_dict(actor_sd)
 actor.eval()
 
 # --- Evaluate Rollouts in RoverEnv ---
 render_mode = None if args.no_render else "human"
-env = RoverEnv(render_mode=render_mode, blind=is_blind, device="cpu")
+env = RoverEnv(
+    render_mode=render_mode,
+    blind=is_blind,
+    control_mode=control_mode,
+    vision_mode=vision_mode,
+    terrain_mode=args.terrain,
+    reward_mode=args.reward_mode,
+    device="cpu",
+)
 total_rewards = []
 
 print("=" * 80)
-print(f"EVALUATING SAC POLICY ({args.episodes} episodes | Mode: {'Blind' if is_blind else 'Visual'} | Deterministic: {args.deterministic})")
+print(f"EVALUATING SAC POLICY ({args.episodes} episodes | Control: {control_mode} | Mode: {'Blind' if is_blind else vision_mode} | Deterministic: {args.deterministic})")
 print("=" * 80)
 
 for ep in range(args.episodes):
@@ -127,6 +184,17 @@ for ep in range(args.episodes):
                     act_td["action"] = torch.tanh(act_td["loc"])
             else:
                 act_td = actor(td.clone())
+
+            # Dynamically adapt action dimensions if model and env differ
+            if act_td["action"].shape[-1] == 2 and env.action_spec.shape[-1] == 10:
+                speed = act_td["action"][..., 0:1].repeat_interleave(6, dim=-1)
+                steer = act_td["action"][..., 1:2]
+                steer_4 = torch.cat([steer, -steer, steer, -steer], dim=-1)
+                act_td["action"] = torch.cat([speed, steer_4], dim=-1)
+            elif act_td["action"].shape[-1] == 10 and env.action_spec.shape[-1] == 2:
+                speed = act_td["action"][..., 0:6].mean(dim=-1, keepdim=True)
+                steer = act_td["action"][..., 6:10].mean(dim=-1, keepdim=True)
+                act_td["action"] = torch.cat([speed, steer], dim=-1)
 
             out_td = env.step(act_td)
             next_td = out_td["next"]
@@ -154,3 +222,7 @@ avg_reward = float(np.mean(total_rewards))
 print("=" * 80)
 print(f"Average reward over {args.episodes} episodes: {avg_reward:.2f}")
 print("=" * 80)
+
+import os
+os._exit(0)
+
