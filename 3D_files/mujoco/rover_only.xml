@@ -148,10 +148,10 @@
           <joint type="hinge" name="pass_left_diff_conn2" pos="-0.18649999999999997 0.17729999999999987 0.2" axis="0.0 0.0 1.0" damping="20.0" stiffness="100.0" armature="0.01" />
         </body>
       </body>
-      <camera name="cam_front_left" pos="0.25 0.15 0.2" xyaxes="0 -1 0 0 0 1" fovy="60" />
-      <camera name="cam_side_left" pos="0.25 0.15 0.2" xyaxes="1 0 0 0 0 1" fovy="60" />
-      <camera name="cam_front_right" pos="0.25 -0.15 0.2" xyaxes="0 -1 0 0 0 1" fovy="60" />
-      <camera name="cam_side_right" pos="0.25 -0.15 0.2" xyaxes="-1 0 0 0 0 1" fovy="60" />
+      <camera name="cam_front_left" pos="0.25 0.15 0.2" xyaxes="0 -1 0 0 0 1" fovy="30" />
+      <camera name="cam_side_left" pos="0.25 0.15 0.2" xyaxes="1 0 0 0 0 1" fovy="30" />
+      <camera name="cam_front_right" pos="0.25 -0.15 0.2" xyaxes="0 -1 0 0 0 1" fovy="30" />
+      <camera name="cam_side_right" pos="0.25 -0.15 0.2" xyaxes="-1 0 0 0 0 1" fovy="30" />
     </body>
   </worldbody>
   <contact />

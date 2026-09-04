@@ -27,8 +27,8 @@ import mujoco
 from torchrl.data import Bounded
 
 # Default camera dimensions and naming matching FreeCAD export
-IMG_H: int = 128
-IMG_W: int = 128
+IMG_H: int = 64
+IMG_W: int = 64
 N_CAMERAS: int = 4
 CAM_NAMES: List[str] = [
     "cam_front_left",
@@ -166,6 +166,12 @@ class DepthmapEyes(BaseEyes):
             self._init_renderer(actual_model)
 
     def _init_renderer(self, model: mujoco.MjModel) -> None:
+        self.scene_opt = mujoco.MjvOption()
+        self.scene_opt.flags[mujoco.mjtRndFlag.mjRND_SHADOW] = 0
+        self.scene_opt.flags[mujoco.mjtRndFlag.mjRND_REFLECTION] = 0
+        self.scene_opt.flags[mujoco.mjtRndFlag.mjRND_SKYBOX] = 0
+        self.scene_opt.flags[mujoco.mjtRndFlag.mjRND_FOG] = 0
+        self.scene_opt.flags[mujoco.mjtRndFlag.mjRND_HAZE] = 0
         """
         Initialize offscreen renderer and enable depth rendering mode.
         """
@@ -199,8 +205,12 @@ class DepthmapEyes(BaseEyes):
         data = env.data if hasattr(env, "data") else env
         frames: List[np.ndarray] = []
         for cam_name in self.cameras:
-            self.renderer.update_scene(data, camera=cam_name)
+            self.renderer.update_scene(data, camera=cam_name, scene_option=getattr(self, "scene_opt", None))
             depth_map = self.renderer.render()
+            
+            # Apply strict 10-meter clipping rule
+            depth_map = np.where(depth_map < 10.0, depth_map, -1.0)
+            
             frames.append(depth_map)
         return np.stack(frames, axis=0).astype(np.float32)
 
@@ -254,6 +264,12 @@ class RGBEyes(BaseEyes):
             self._init_renderer(actual_model)
 
     def _init_renderer(self, model: mujoco.MjModel) -> None:
+        self.scene_opt = mujoco.MjvOption()
+        self.scene_opt.flags[mujoco.mjtRndFlag.mjRND_SHADOW] = 0
+        self.scene_opt.flags[mujoco.mjtRndFlag.mjRND_REFLECTION] = 0
+        self.scene_opt.flags[mujoco.mjtRndFlag.mjRND_SKYBOX] = 0
+        self.scene_opt.flags[mujoco.mjtRndFlag.mjRND_FOG] = 0
+        self.scene_opt.flags[mujoco.mjtRndFlag.mjRND_HAZE] = 0
         """
         Initialize offscreen RGB renderer.
         """
@@ -288,7 +304,7 @@ class RGBEyes(BaseEyes):
         data = env.data if hasattr(env, "data") else env
         frames: List[np.ndarray] = []
         for cam_name in self.cameras:
-            self.renderer.update_scene(data, camera=cam_name)
+            self.renderer.update_scene(data, camera=cam_name, scene_option=getattr(self, "scene_opt", None))
             frame = self.renderer.render()
             frames.append(frame.transpose(2, 0, 1))
         return np.concatenate(frames, axis=0).astype(np.uint8)
@@ -301,7 +317,7 @@ class RGBEyes(BaseEyes):
             self._init_renderer(env.model)
         if self.renderer is not None:
             data = env.data if hasattr(env, "data") else env
-            self.renderer.update_scene(data)
+            self.renderer.update_scene(data, scene_option=getattr(self, "scene_opt", None))
             return self.renderer.render()
         return None
 

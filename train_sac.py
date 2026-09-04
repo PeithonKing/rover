@@ -1,3 +1,5 @@
+import os
+os.environ.setdefault("MUJOCO_GL", "osmesa")
 """
 train_sac.py
 ============
@@ -26,7 +28,7 @@ import argparse
 from typing import Dict, List, Optional, Tuple, Union
 
 # Set headless MuJoCo rendering backend before importing mujoco
-os.environ.setdefault("MUJOCO_GL", "egl")
+os.environ.setdefault("MUJOCO_GL", "osmesa")
 
 # Ensure fork start method is used on Linux for multiprocessing collector workers
 import torch.multiprocessing as mp
@@ -342,6 +344,7 @@ collector = build_collector(
     vision_mode=vision_mode,
     terrain_mode=args.terrain,
     reward_mode=args.reward_mode,
+    device=device,
 )
 
 mode_name = vision_mode.capitalize()

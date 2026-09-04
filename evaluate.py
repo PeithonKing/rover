@@ -1,3 +1,5 @@
+import os
+os.environ.setdefault("MUJOCO_GL", "osmesa")
 """
 evaluate.py
 ===========
@@ -155,7 +157,10 @@ actor.eval()
 
 # --- Evaluate Rollouts in RoverEnv ---
 render_mode = None if args.no_render else "human"
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 env = RoverEnv(
+    device=device,
     render_mode=render_mode,
     blind=is_blind,
     control_mode=control_mode,

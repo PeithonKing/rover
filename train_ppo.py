@@ -28,7 +28,7 @@ import matplotlib.pyplot as plt
 from rover_env import RoverEnv
 from models import make_actor, make_ppo_critic
 
-os.environ.setdefault("MUJOCO_GL", "egl")
+os.environ.setdefault("MUJOCO_GL", "osmesa")
 
 
 def make_env_creator(
@@ -37,6 +37,7 @@ def make_env_creator(
     terrain: str = "flat",
     reward_mode: str = "standard",
     max_steps: int = 2000,
+    device="cpu",
 ):
     def _create_env():
         render_mode = "rgb_array" if vision_mode != "blind" else None
@@ -44,6 +45,7 @@ def make_env_creator(
             control_mode=control_mode,
             vision_mode=vision_mode,
             terrain_mode=terrain,
+            device=device,
             reward_mode=reward_mode,
             render_mode=render_mode,
         )
@@ -153,6 +155,7 @@ env_creator = make_env_creator(
     vision_mode=vision_mode,
     terrain=args.terrain,
     reward_mode=args.reward_mode,
+    device=device,
 )
 dummy_env = env_creator()
 action_spec = dummy_env.action_spec

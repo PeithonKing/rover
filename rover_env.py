@@ -1,3 +1,5 @@
+import os
+os.environ.setdefault("MUJOCO_GL", "osmesa")
 """
 rover_env.py
 ============
@@ -39,7 +41,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 # Enable headless EGL rendering if not explicitly overridden
 if "MUJOCO_GL" not in os.environ:
-    os.environ["MUJOCO_GL"] = "egl"
+    os.environ["MUJOCO_GL"] = "osmesa"
 
 import numpy as np
 import torch
