@@ -1,5 +1,3 @@
-import os
-os.environ.setdefault("MUJOCO_GL", "osmesa")
 """
 train_sac.py
 ============
@@ -28,7 +26,7 @@ import argparse
 from typing import Dict, List, Optional, Tuple, Union
 
 # Set headless MuJoCo rendering backend before importing mujoco
-os.environ.setdefault("MUJOCO_GL", "osmesa")
+os.environ.setdefault("MUJOCO_GL", "egl")
 
 # Ensure fork start method is used on Linux for multiprocessing collector workers
 import torch.multiprocessing as mp
@@ -59,7 +57,8 @@ from torchrl.modules import ProbabilisticActor
 import wandb
 
 from rover_env import RoverEnv
-from models import make_actor, make_critic
+from components.observations import TargetAwareObservation, TargetBlindObservation
+from models import RoverFeaturesExtractor, BlindRoverFeaturesExtractor, make_actor, make_critic
 from sac_utils import (
     make_env_fn,
     build_sac_components,
@@ -302,7 +301,7 @@ if args.resume:
 # Initialize Weights & Biases if enabled
 if args.wandb:
     wandb.init(
-        project="rocker-bogie-rover",
+        project="rover_rl",
         config={
             "algorithm": "SAC_TorchRL",
             "blind": args.blind,

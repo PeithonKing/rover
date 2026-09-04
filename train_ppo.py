@@ -26,9 +26,10 @@ import wandb
 import matplotlib.pyplot as plt
 
 from rover_env import RoverEnv
-from models import make_actor, make_ppo_critic
+from components.observations import TargetAwareObservation, TargetBlindObservation
+from models import RoverFeaturesExtractor, BlindRoverFeaturesExtractor, make_actor, make_ppo_critic
 
-os.environ.setdefault("MUJOCO_GL", "osmesa")
+os.environ.setdefault("MUJOCO_GL", "egl")
 
 
 def make_env_creator(
@@ -41,11 +42,13 @@ def make_env_creator(
 ):
     def _create_env():
         render_mode = "rgb_array" if vision_mode != "blind" else None
+        numeric_obs = TargetBlindObservation() if vision_mode != "blind" else TargetAwareObservation()
         env = RoverEnv(
             control_mode=control_mode,
             vision_mode=vision_mode,
             terrain_mode=terrain,
             device=device,
+            numeric_obs=numeric_obs,
             reward_mode=reward_mode,
             render_mode=render_mode,
         )
@@ -163,9 +166,13 @@ dummy_env.close()
 
 env = ParallelEnv(args.workers, env_creator, mp_start_method="fork")
 
+# Assemble feature extractor explicitly
+num_dim = 11 if not blind else 13
+feature_extractor = RoverFeaturesExtractor(num_dim=num_dim) if not blind else BlindRoverFeaturesExtractor(num_dim=num_dim)
+
 # Networks
-actor = make_actor(blind=blind, action_spec=action_spec).to(device)
-critic = make_ppo_critic(blind=blind).to(device)
+actor = make_actor(feature_extractor=feature_extractor, blind=blind, action_spec=action_spec).to(device)
+critic = make_ppo_critic(feature_extractor=feature_extractor, blind=blind).to(device)
 
 # Optimizer
 optim = torch.optim.Adam(list(actor.parameters()) + list(critic.parameters()), lr=args.lr)

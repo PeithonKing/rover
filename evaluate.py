@@ -1,5 +1,3 @@
-import os
-os.environ.setdefault("MUJOCO_GL", "osmesa")
 """
 evaluate.py
 ===========
@@ -19,7 +17,8 @@ import torch
 from tensordict import TensorDict
 
 from rover_env import RoverEnv
-from models import make_actor
+from components.observations import TargetAwareObservation, TargetBlindObservation
+from models import RoverFeaturesExtractor, BlindRoverFeaturesExtractor, make_actor
 
 
 parser = argparse.ArgumentParser(description="Evaluate trained 6-Wheel Rover SAC policy")
@@ -159,8 +158,10 @@ actor.eval()
 render_mode = None if args.no_render else "human"
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+numeric_obs = TargetBlindObservation() if vision_mode != "blind" else TargetAwareObservation()
 env = RoverEnv(
     device=device,
+    numeric_obs=numeric_obs,
     render_mode=render_mode,
     blind=is_blind,
     control_mode=control_mode,

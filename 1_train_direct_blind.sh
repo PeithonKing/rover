@@ -1,12 +1,12 @@
 #!/bin/bash
-# Experiment 1: Direct 10-Motor Control, Blind, Flat Terrain
+# Script 1: BLIND + DIRECT (10-value motor control) + PPO
 
-python train_ppo.py \
-    --workers 6 \
-    --mini-batch-size 512 \
-    --epochs 4 \
-    --control-mode direct \
+nohup .venv/bin/python train_ppo.py \
+    --workers 10 \
+    --frames-per-batch 16380 \
     --vision-mode blind \
-    --terrain flat \
-    --checkpoint-dir checkpoints/exp1_direct_blind
+    --control-mode direct \
+    --total-timesteps 10000000 \
+    > log_1_direct_blind.txt 2>&1 &
 
+echo "Started Script 1: Blind Direct PPO. Logs are tailing into log_1_direct_blind.txt"

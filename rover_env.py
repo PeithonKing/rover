@@ -1,5 +1,3 @@
-import os
-os.environ.setdefault("MUJOCO_GL", "osmesa")
 """
 rover_env.py
 ============
@@ -41,7 +39,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 # Enable headless EGL rendering if not explicitly overridden
 if "MUJOCO_GL" not in os.environ:
-    os.environ["MUJOCO_GL"] = "osmesa"
+    os.environ["MUJOCO_GL"] = "egl"
 
 import numpy as np
 import torch
@@ -56,6 +54,7 @@ from torchrl.data import (
     UnboundedContinuous,
 )
 
+from components.observations import BaseNumericObservation, TargetAwareObservation, PASSIVE_SENSORS
 from components import (
     BaseController,
     AckermannController,
@@ -92,14 +91,7 @@ from components import (
 # ---------------------------------------------------------------------------
 SCENE_XML = os.path.join(os.path.dirname(os.path.abspath(__file__)), "3D_files/mujoco/scene.xml")
 MAX_STEPS = 2000
-N_NUMERIC = 13
 
-PASSIVE_SENSORS = [
-    "sensor_pass_left_rocker",
-    "sensor_pass_right_rocker",
-    "sensor_pass_left_rockerbogie",
-    "sensor_pass_right_rockerbogie",
-]
 
 
 class RoverEnv(EnvBase):
@@ -119,6 +111,7 @@ class RoverEnv(EnvBase):
         vision_mode: Optional[Union[str, BaseEyes]] = None,
         terrain_mode: Optional[Union[str, BaseTerrain]] = None,
         reward_mode: Optional[Union[str, BaseReward]] = None,
+        numeric_obs: Optional[BaseNumericObservation] = None,
         render_mode: Optional[str] = None,
         blind: Optional[bool] = None,
         device: Union[torch.device, str] = "cpu",
@@ -219,6 +212,7 @@ class RoverEnv(EnvBase):
         self.reward: BaseReward = bundle.reward
         self.reward_fn: BaseReward = bundle.reward
         self.terrain: BaseTerrain = bundle.terrain
+        self.numeric_obs = numeric_obs or TargetAwareObservation()
 
         # Ensure offscreen renderer initialized for DepthmapEyes and RGBEyes
         if hasattr(self.eyes, "renderer") and getattr(self.eyes, "renderer", None) is None:
@@ -276,7 +270,7 @@ class RoverEnv(EnvBase):
         """Defines dynamic TorchRL specs delegated to injected components."""
         cameras_spec = self.eyes.get_observation_spec(device=self.device)
         numeric_spec = UnboundedContinuous(
-            shape=torch.Size([N_NUMERIC]),
+            shape=torch.Size([self.numeric_obs.dim]),
             dtype=torch.float32,
             device=self.device,
         )
@@ -409,26 +403,7 @@ class RoverEnv(EnvBase):
         )
 
     def _get_numeric_obs(self) -> np.ndarray:
-        """Collects 13-dimensional proprioception and local target vector."""
-        imu_quat = self.data.sensor("imu_quat").data.copy().astype(np.float32)
-        imu_angvel = self.data.sensor("imu_angvel").data.copy().astype(np.float32)
-
-        passive = np.array(
-            [self.data.sensor(n).data[0] for n in PASSIVE_SENSORS], dtype=np.float32
-        )
-
-        rover_pos = self.data.body("body").xpos[:2]
-        world_delta = (self._target - rover_pos).astype(np.float32)
-
-        xmat = self.data.body("body").xmat.reshape(3, 3)
-        forward = xmat[:2, 0]  # Local +X in world XY
-        right = xmat[:2, 1]    # Local +Y in world XY
-
-        local_dx = float(np.dot(world_delta, forward))
-        local_dy = float(np.dot(world_delta, right))
-        rel_target = np.array([local_dx, local_dy], dtype=np.float32)
-
-        return np.concatenate([imu_quat, imu_angvel, passive, rel_target], dtype=np.float32)
+        return self.numeric_obs.read(self)
 
     def _get_obs(self) -> Tuple[np.ndarray, np.ndarray]:
         """Collects camera perception from eyes and 13-dim numeric observation."""

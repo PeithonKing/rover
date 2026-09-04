@@ -1,15 +1,4 @@
 import os
-
-# --- CONFIGURATION ---
-# Change this to "cpu" to force software rendering and CPU tensors
-# Change this to "cuda" to force EGL hardware rendering and GPU VRAM tensors
-TEST_MODE = "cpu" 
-
-if TEST_MODE == "cuda":
-    os.environ["MUJOCO_GL"] = "osmesa"
-else:
-    os.environ["MUJOCO_GL"] = "osmesa"
-
 import time
 import torch
 import numpy as np
@@ -64,11 +53,11 @@ def run_resolution_benchmark(res, steps=500, runs=5, device_str="cpu"):
 
 
 print("========================================")
-print(f"   DEPTHMAP BENCHMARK ({TEST_MODE.upper()} MODE)")
+print(f"   DEPTHMAP BENCHMARK")
 print("========================================\n")
 
-run_resolution_benchmark(8, device_str=TEST_MODE)
-run_resolution_benchmark(16, device_str=TEST_MODE)
-run_resolution_benchmark(32, device_str=TEST_MODE)
-run_resolution_benchmark(64, device_str=TEST_MODE)
-run_resolution_benchmark(128, device_str=TEST_MODE)
+run_resolution_benchmark(8)
+run_resolution_benchmark(16)
+run_resolution_benchmark(32)
+run_resolution_benchmark(64)
+run_resolution_benchmark(128)
