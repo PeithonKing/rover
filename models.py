@@ -104,7 +104,6 @@ class CameraCNN(nn.Module):
         self.conv4 = ConvBlock(64, 64)
         self.conv5 = ConvBlock(64, 64)
         self.conv6 = ConvBlock(64, 64)
-        self.conv7 = ConvBlock(64, 64)
         self.post_mlp = MLP2(input_dim=64, hidden_dim=32, output_dim=out_dim)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -121,7 +120,6 @@ class CameraCNN(nn.Module):
         h = self.conv4(h)
         h = self.conv5(h)
         h = self.conv6(h)
-        h = self.conv7(h)
         flat = torch.flatten(h, start_dim=-3)
         out = self.post_mlp(flat)
         if unbatched:

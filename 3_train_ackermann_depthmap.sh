@@ -1,9 +1,9 @@
 #!/bin/bash
-# Script 2: RGB CAMERA + ACKERMANN (2-value control) + PPO
+# Script 3: DEPTHMAP CAMERA + ACKERMANN (2-value control) + PPO
 
 .venv/bin/python train_ppo.py \
     --workers 10 \
     --frames-per-batch 10240 \
-    --vision-mode rgb \
+    --vision-mode depthmap \
     --control-mode ackermann \
-    --total-timesteps 10000000
+    --total-timesteps 3000000
